@@ -6,14 +6,56 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		04C280322EF28F7D006E43C6 /* CameraManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280312EF28F78006E43C6 /* CameraManager.swift */; };
+		04C280342EF28F89006E43C6 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280332EF28F83006E43C6 /* CameraPreviewView.swift */; };
+		04C2803D2EF2946B006E43C6 /* FilmPresets_Complete.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2803C2EF29457006E43C6 /* FilmPresets_Complete.swift */; };
+		04C2803F2EF2948C006E43C6 /* LUTLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2802C2EF28F08006E43C6 /* LUTLoader.swift */; };
+		04C280402EF29490006E43C6 /* TexturePool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2802B2EF28EFB006E43C6 /* TexturePool.swift */; };
+		04C280412EF29494006E43C6 /* FilterPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2802A2EF28EF2006E43C6 /* FilterPipeline.swift */; };
+		04C280422EF29498006E43C6 /* RenderEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280292EF28EE5006E43C6 /* RenderEngine.swift */; };
+		04C2804C2EF294BB006E43C6 /* FilmCameraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2801C2EF28DF5006E43C6 /* FilmCameraApp.swift */; };
+		04C2808B2EF2A97F006E43C6 /* Shader.metal in Sources */ = {isa = PBXBuildFile; fileRef = 04C2808A2EF2A971006E43C6 /* Shader.metal */; };
+		04C280932EF2AFB6006E43C6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280922EF2AFB4006E43C6 /* Models.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		04C2800D2EF28DAA006E43C6 /* Film camera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Film camera.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		04C2801C2EF28DF5006E43C6 /* FilmCameraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmCameraApp.swift; sourceTree = "<group>"; };
+		04C280292EF28EE5006E43C6 /* RenderEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderEngine.swift; sourceTree = "<group>"; };
+		04C2802A2EF28EF2006E43C6 /* FilterPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterPipeline.swift; sourceTree = "<group>"; };
+		04C2802B2EF28EFB006E43C6 /* TexturePool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturePool.swift; sourceTree = "<group>"; };
+		04C2802C2EF28F08006E43C6 /* LUTLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LUTLoader.swift; sourceTree = "<group>"; };
+		04C280312EF28F78006E43C6 /* CameraManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraManager.swift; sourceTree = "<group>"; };
+		04C280332EF28F83006E43C6 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		04C2803C2EF29457006E43C6 /* FilmPresets_Complete.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmPresets_Complete.swift; sourceTree = "<group>"; };
+		04C2806F2EF2A50D006E43C6 /* ShaderTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderTypes.h; sourceTree = "<group>"; };
+		04C2808A2EF2A971006E43C6 /* Shader.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shader.metal; sourceTree = "<group>"; };
+		04C280922EF2AFB4006E43C6 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		04C280952EF2BB01006E43C6 /* Exceptions for "Film camera" folder in "Film camera" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Film-camera-Info.plist",
+			);
+			target = 04C2800C2EF28DAA006E43C6 /* Film camera */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		04C2800F2EF28DAA006E43C6 /* Film camera */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				04C280952EF2BB01006E43C6 /* Exceptions for "Film camera" folder in "Film camera" target */,
+			);
 			path = "Film camera";
+			sourceTree = "<group>";
+		};
+		04C2803B2EF28FE8006E43C6 /* LUTs */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LUTs;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +74,13 @@
 		04C280042EF28DAA006E43C6 = {
 			isa = PBXGroup;
 			children = (
+				04C280922EF2AFB4006E43C6 /* Models.swift */,
+				04C280392EF28FD3006E43C6 /* Resources */,
+				04C280362EF28F9F006E43C6 /* Camera */,
+				04C280352EF28F90006E43C6 /* Presets */,
+				04C2802D2EF28F22006E43C6 /* Shaders */,
+				04C280282EF28EDC006E43C6 /* Engine */,
+				04C2801B2EF28DEA006E43C6 /* App */,
 				04C2800F2EF28DAA006E43C6 /* Film camera */,
 				04C2800E2EF28DAA006E43C6 /* Products */,
 			);
@@ -43,6 +92,59 @@
 				04C2800D2EF28DAA006E43C6 /* Film camera.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		04C2801B2EF28DEA006E43C6 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				04C2801C2EF28DF5006E43C6 /* FilmCameraApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		04C280282EF28EDC006E43C6 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				04C2802C2EF28F08006E43C6 /* LUTLoader.swift */,
+				04C2802B2EF28EFB006E43C6 /* TexturePool.swift */,
+				04C2802A2EF28EF2006E43C6 /* FilterPipeline.swift */,
+				04C280292EF28EE5006E43C6 /* RenderEngine.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		04C2802D2EF28F22006E43C6 /* Shaders */ = {
+			isa = PBXGroup;
+			children = (
+				04C2808A2EF2A971006E43C6 /* Shader.metal */,
+				04C2806F2EF2A50D006E43C6 /* ShaderTypes.h */,
+			);
+			path = Shaders;
+			sourceTree = "<group>";
+		};
+		04C280352EF28F90006E43C6 /* Presets */ = {
+			isa = PBXGroup;
+			children = (
+				04C2803C2EF29457006E43C6 /* FilmPresets_Complete.swift */,
+			);
+			path = Presets;
+			sourceTree = "<group>";
+		};
+		04C280362EF28F9F006E43C6 /* Camera */ = {
+			isa = PBXGroup;
+			children = (
+				04C280312EF28F78006E43C6 /* CameraManager.swift */,
+				04C280332EF28F83006E43C6 /* CameraPreviewView.swift */,
+			);
+			path = Camera;
+			sourceTree = "<group>";
+		};
+		04C280392EF28FD3006E43C6 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				04C2803B2EF28FE8006E43C6 /* LUTs */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -119,6 +221,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				04C280412EF29494006E43C6 /* FilterPipeline.swift in Sources */,
+				04C2804C2EF294BB006E43C6 /* FilmCameraApp.swift in Sources */,
+				04C280342EF28F89006E43C6 /* CameraPreviewView.swift in Sources */,
+				04C280932EF2AFB6006E43C6 /* Models.swift in Sources */,
+				04C2803F2EF2948C006E43C6 /* LUTLoader.swift in Sources */,
+				04C280422EF29498006E43C6 /* RenderEngine.swift in Sources */,
+				04C280322EF28F7D006E43C6 /* CameraManager.swift in Sources */,
+				04C2808B2EF2A97F006E43C6 /* Shader.metal in Sources */,
+				04C2803D2EF2946B006E43C6 /* FilmPresets_Complete.swift in Sources */,
+				04C280402EF29490006E43C6 /* TexturePool.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,6 +366,12 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[arch=*]" = (
+					"$(SRCROOT)/Film",
+					camera/Shaders,
+				);
+				INFOPLIST_FILE = "Film-camera-Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "App cần truy cập camera để chụp ảnh màu film.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -264,7 +382,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.7;
@@ -274,13 +392,18 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"USER_HEADER_SEARCH_PATHS[arch=*]" = (
+					"$(SRCROOT)/Film",
+					camera/Shaders,
+				);
 				XROS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Debug;
@@ -298,6 +421,12 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"HEADER_SEARCH_PATHS[arch=*]" = (
+					"$(SRCROOT)/Film",
+					camera/Shaders,
+				);
+				INFOPLIST_FILE = "Film-camera-Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "App cần truy cập camera để chụp ảnh màu film.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -308,7 +437,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.7;
@@ -318,13 +447,18 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"USER_HEADER_SEARCH_PATHS[arch=*]" = (
+					"$(SRCROOT)/Film",
+					camera/Shaders,
+				);
 				XROS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Release;
