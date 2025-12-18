@@ -49,8 +49,8 @@ struct ContentView: View {
     
     private var cameraContentView: some View {
         ZStack {
-            // Camera Preview
-            CameraPreviewView(cameraManager: cameraManager)
+            // Camera Preview with Real-time Filtering
+            MetalPreviewView(cameraManager: cameraManager, selectedPreset: $selectedPreset)
                 .ignoresSafeArea()
             
             // Loading overlay when session not ready
@@ -287,11 +287,11 @@ struct ContentView: View {
             isCapturing = true
         }
         
-        cameraManager.capturePhoto { image in
+        cameraManager.capturePhoto(preset: selectedPreset) { image in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isCapturing = false
             }
-            
+
             if let image = image {
                 saveToPhotoLibrary(image)
             }
