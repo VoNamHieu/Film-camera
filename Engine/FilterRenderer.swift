@@ -1,6 +1,6 @@
 // FilterRenderer.swift
 // Film Camera - Core Filter Rendering Pipeline (FIXED VERSION)
-// Fixes: Texture recycle timing, ping-pong buffer, separable blur
+// ★★★ CRITICAL FIX: addCompletedHandler MUST be called BEFORE commit()
 
 import Foundation
 import Metal
@@ -99,15 +99,15 @@ class FilterRenderer {
         // FINAL PASS: Blit to drawable
         blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
 
-        // ★ FIX: Present drawable through command buffer
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
-
-        // ★ FIX: Recycle textures AFTER GPU completes
+        // ★★★ CRITICAL: addCompletedHandler MUST be BEFORE commit() ★★★
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
             texturePool?.recycle(temp1)
             texturePool?.recycle(temp2)
         }
+
+        // Present and commit AFTER adding completion handler
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
     }
 
     // MARK: - Render to Texture (for photo capture)
@@ -175,13 +175,13 @@ class FilterRenderer {
 
         blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
 
-        commandBuffer.commit()
-
-        // ★ FIX: Recycle after completion
+        // ★★★ FIX: addCompletedHandler BEFORE commit() ★★★
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
             texturePool?.recycle(temp1)
             texturePool?.recycle(temp2)
         }
+
+        commandBuffer.commit()
     }
 
     // MARK: - Ping-Pong Buffer Helper

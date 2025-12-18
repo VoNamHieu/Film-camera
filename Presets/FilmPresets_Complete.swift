@@ -1,5 +1,6 @@
 // FilmPresets_Complete.swift
 // Film Emulation Preset Data - 24 Presets
+// ★ FIXED: Correct LUT filenames to match actual files in Resources/LUTs/
 
 import Foundation
 
@@ -12,7 +13,7 @@ struct FilmPresets {
         label: "Kodak Portra 400",
         category: .professional,
         lutId: "PORTRA_400_LINEAR",
-        lutFile: "luts/Kodak_Portra_400_Linear.cube",
+        lutFile: "Kodak_Portra_400_Linear.cube",  // ★ Fixed: removed "luts/" prefix
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.04, saturation: 0.0, vibrance: 0.02),
         grain: GrainConfig(
@@ -41,7 +42,7 @@ struct FilmPresets {
         label: "Kodak Portra 160 · Natural Portrait",
         category: .professional,
         lutId: "KODAK_PORTRA_160",
-        lutFile: "luts/Kodak_Portra_160_Linear.cube",
+        lutFile: "Kodak_Portra_160_Linear.cube",  // ★ Fixed
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: -0.05),
         splitTone: SplitToneConfig(shadowsHue: 185, shadowsSat: 0.08, highlightsHue: 32, highlightsSat: 0.06, balance: 0.35, midtoneProtection: 0.45),
@@ -66,7 +67,7 @@ struct FilmPresets {
         label: "Fuji Pro 400H · Linear",
         category: .professional,
         lutId: "FUJI_400H",
-        lutFile: "luts/Fuji_400H_Linear.cube",
+        lutFile: "Fuji_400H_Linear.cube",  // ★ Fixed
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.03, contrast: -0.08, highlights: -0.04, shadows: 0.06, saturation: -0.08, vibrance: 0.12, temperature: -0.03, tint: 0.04, fade: 0.03),
         splitTone: SplitToneConfig(shadowsHue: 195, shadowsSat: 0.08, highlightsHue: 42, highlightsSat: 0.04),
@@ -98,7 +99,7 @@ struct FilmPresets {
         label: "Kodak Ultramax 400 v6.0",
         category: .consumer,
         lutId: "KODAK_ULTRAMAX_400_LINEAR",
-        lutFile: "luts/Kodak_Ultramax_400_linear_inout.cube",
+        lutFile: "Kodak_Ultramax_400_linear_inout.cube",  // ★ Fixed
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.08, saturation: 0.0, vibrance: 0.02),
         splitTone: SplitToneConfig(shadowsHue: 185, shadowsSat: 0.10, highlightsHue: 40, highlightsSat: 0.05),
@@ -125,7 +126,7 @@ struct FilmPresets {
         label: "Kodak Gold 200 v4.0",
         category: .consumer,
         lutId: "KODAK_GOLD_200_V2",
-        lutFile: "luts/Kodak_Gold_200_v2_linear.cube",
+        lutFile: "Kodak_Gold_200_v2_linear.cube",  // ★ Fixed
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.04, saturation: 0.0, vibrance: 0.03),
         grain: GrainConfig(
@@ -150,7 +151,7 @@ struct FilmPresets {
         label: "Kodak ColorPlus 200 · Warm Consumer",
         category: .consumer,
         lutId: "KODAK_COLORPLUS_200",
-        lutFile: "luts/Kodak_ColorPlus_200_Linear.cube",
+        lutFile: "Kodak_ColorPlus_200_Linear.cube",  // ★ Fixed
         colorSpace: "linear",
         filmStock: FilmStock(manufacturer: "Kodak", name: "ColorPlus 200", type: "Color Negative (C-41)", speed: 200, year: 2005,
             characteristics: ["Warm tones", "Budget consumer film", "Nostalgic everyday look"]))
@@ -159,6 +160,7 @@ struct FilmPresets {
         id: "SUPERIA_400",
         label: "Fuji Superia X-TRA 400",
         category: .consumer,
+        lutFile: "Fuji_Superia_400_Linear.cube",  // ★ Added LUT file
         colorAdjustments: ColorAdjustments(exposure: 0.05, contrast: 0.12, highlights: -0.05, shadows: 0.08, saturation: 0.15, vibrance: 0.10, temperature: -0.02, tint: 0.04, fade: 0.05),
         splitTone: SplitToneConfig(shadowsHue: 170, shadowsSat: 0.12, highlightsHue: 40, highlightsSat: 0.05),
         rgbCurves: RGBCurves(
@@ -178,7 +180,7 @@ struct FilmPresets {
         label: "Fuji Velvia 100 · Vivid Slide",
         category: .slide,
         lutId: "FUJI_VELVIA_100",
-        lutFile: "luts/Fuji_Velvia_100_Linear.cube",
+        lutFile: "Fuji_Velvia_100_Linear.cube",  // ★ Fixed
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.08, saturation: 0.18, vibrance: 0.12, temperature: 0.02),
         splitTone: SplitToneConfig(shadowsHue: 225, shadowsSat: 0.12, highlightsHue: 35, highlightsSat: 0.05),
@@ -201,7 +203,7 @@ struct FilmPresets {
         label: "Fuji Provia 100F · LUT",
         category: .slide,
         lutId: "FUJI_PROVIA_100F",
-        lutFile: "luts/Fuji_Provia_100F_Linear.cube",
+        lutFile: "provia_100f_33.cube",  // ★★★ FIXED: Was "Fuji_Provia_100F_Linear.cube"
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.05, saturation: 0.0, vibrance: 0.05),
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Provia 100F", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
@@ -212,7 +214,7 @@ struct FilmPresets {
         label: "Fuji Astia 100F · LUT",
         category: .slide,
         lutId: "FUJI_ASTIA_100F",
-        lutFile: "Fuji_Astia_100F_Linear.cube",
+        lutFile: "Fuji_Astia_100F_Linear.cube",  // ★ Confirmed correct
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: -0.02, saturation: -0.05, vibrance: 0.03),
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Astia 100F", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
@@ -225,7 +227,7 @@ struct FilmPresets {
         label: "Fuji ETERNA 500T Cinema",
         category: .cinema,
         lutId: "ETERNA",
-        lutFile: "luts/Fuji_Eterna_linear.cube",
+        lutFile: "Fuji_Eterna_linear.cube",  // ★ Fixed
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: -0.01, contrast: -0.08, highlights: -0.05, shadows: 0.05, saturation: -0.15, vibrance: -0.03, temperature: -0.03, tint: 0.01, fade: 0.04),
         splitTone: SplitToneConfig(shadowsHue: 195, shadowsSat: 0.06),
@@ -257,7 +259,7 @@ struct FilmPresets {
         label: "Kodak Tri-X 400 · Classic B&W",
         category: .blackAndWhite,
         lutId: "KODAK_TRI_X_400",
-        lutFile: "luts/Kodak_Tri-X_400_Linear.cube",
+        lutFile: "Kodak_Tri-X_400_Linear.cube",  // ★ Fixed
         colorSpace: "linear",
         grain: GrainConfig(
             enabled: true, globalIntensity: 0.25,
@@ -281,6 +283,7 @@ struct FilmPresets {
         id: "POLAROID_600",
         label: "Polaroid 600 · Classic Instant",
         category: .instant,
+        lutFile: "Polaroid_600_Linear.cube",  // ★ Added LUT
         colorAdjustments: ColorAdjustments(exposure: 0.08, contrast: 0.15, highlights: -0.20, shadows: -0.05, whites: -0.05, blacks: 0.12, saturation: -0.08, vibrance: 0.05, temperature: 0.06, tint: -0.02, fade: 0.08, clarity: -0.08),
         splitTone: SplitToneConfig(shadowsHue: 185, shadowsSat: 0.15, highlightsHue: 350, highlightsSat: 0.08, balance: 0.35, midtoneProtection: 0.30),
         selectiveColor: [
@@ -407,7 +410,7 @@ struct FilmPresets {
         label: "Kodak FunSaver · Party Flash",
         category: .disposable,
         lutId: "KODAK_GOLD_200_V2",
-        lutFile: "luts/Kodak_Gold_200_v2_linear.cube",
+        lutFile: "Kodak_Gold_200_v2_linear.cube",  // ★ Fixed
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.05, contrast: 0.12, highlights: 0.08, shadows: -0.05, whites: 0.05, blacks: -0.03, saturation: 0.10, vibrance: 0.05, temperature: 0.02, tint: -0.04, clarity: -0.08),
         splitTone: SplitToneConfig(shadowsHue: 140, shadowsSat: 0.10, highlightsHue: 50, highlightsSat: 0.08, balance: 0.40, midtoneProtection: 0.20),
@@ -627,7 +630,7 @@ struct FilmPresets {
         label: "Nostalgic Neg · Vintage Color",
         category: .creative,
         lutId: "NOSTALGIC_NEG",
-        lutFile: "luts/Nostalgic_Neg_Linear.cube",
+        lutFile: "Nostalgic_Neg_Linear.cube",  // ★ Fixed
         colorSpace: "linear",
         splitTone: SplitToneConfig(shadowsHue: 190, shadowsSat: 0.10, highlightsHue: 35, highlightsSat: 0.08, balance: 0.38, midtoneProtection: 0.42),
         selectiveColor: [
@@ -657,6 +660,7 @@ struct FilmPresets {
         id: "CLASSIC_NEGATIVE",
         label: "Classic Negative",
         category: .creative,
+        lutFile: "classic_chrome_linear.cube",  // ★ Added LUT
         colorAdjustments: ColorAdjustments(exposure: -0.02, contrast: 0.18, highlights: 0.08, shadows: -0.10, saturation: -0.10, vibrance: -0.04, temperature: 0.03, tint: -0.02),
         splitTone: SplitToneConfig(shadowsHue: 220, shadowsSat: 0.14, highlightsHue: 32, highlightsSat: 0.12),
         rgbCurves: RGBCurves(
