@@ -18,8 +18,21 @@ class RenderEngine {
     private(set) var colorGradingPipeline: MTLRenderPipelineState?
     private(set) var vignettePipeline: MTLRenderPipelineState?
     private(set) var grainPipeline: MTLRenderPipelineState?
+
+    // Bloom 4-pass pipelines
+    private(set) var bloomThresholdPipeline: MTLRenderPipelineState?
+    private(set) var blurHorizontalPipeline: MTLRenderPipelineState?
+    private(set) var blurVerticalPipeline: MTLRenderPipelineState?
+    private(set) var bloomCompositePipeline: MTLRenderPipelineState?
+
+    // Halation 4-pass pipelines
+    private(set) var halationThresholdPipeline: MTLRenderPipelineState?
+    private(set) var halationCompositePipeline: MTLRenderPipelineState?
+
+    // Legacy single-pass pipelines (deprecated)
     private(set) var bloomPipeline: MTLRenderPipelineState?
     private(set) var halationPipeline: MTLRenderPipelineState?
+
     private(set) var instantFramePipeline: MTLRenderPipelineState?
     
     // LUT textures cache
@@ -82,20 +95,48 @@ class RenderEngine {
             print("⚠️ RenderEngine: grainFragment shader not found")
         }
 
-        // Bloom Pipeline
-        if let fragmentFunction = library.makeFunction(name: "bloomFragment") {
-            bloomPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(bloomPipeline != nil ? "✅ RenderEngine: bloomPipeline created" : "❌ RenderEngine: bloomPipeline FAILED")
+        // Bloom 4-pass Pipelines
+        if let fragmentFunction = library.makeFunction(name: "bloomThresholdFragment") {
+            bloomThresholdPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
+            print(bloomThresholdPipeline != nil ? "✅ RenderEngine: bloomThresholdPipeline created" : "❌ RenderEngine: bloomThresholdPipeline FAILED")
         } else {
-            print("⚠️ RenderEngine: bloomFragment shader not found")
+            print("⚠️ RenderEngine: bloomThresholdFragment shader not found")
         }
 
-        // Halation Pipeline
-        if let fragmentFunction = library.makeFunction(name: "halationFragment") {
-            halationPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(halationPipeline != nil ? "✅ RenderEngine: halationPipeline created" : "❌ RenderEngine: halationPipeline FAILED")
+        if let fragmentFunction = library.makeFunction(name: "blurHorizontalFragment") {
+            blurHorizontalPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
+            print(blurHorizontalPipeline != nil ? "✅ RenderEngine: blurHorizontalPipeline created" : "❌ RenderEngine: blurHorizontalPipeline FAILED")
         } else {
-            print("⚠️ RenderEngine: halationFragment shader not found")
+            print("⚠️ RenderEngine: blurHorizontalFragment shader not found")
+        }
+
+        if let fragmentFunction = library.makeFunction(name: "blurVerticalFragment") {
+            blurVerticalPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
+            print(blurVerticalPipeline != nil ? "✅ RenderEngine: blurVerticalPipeline created" : "❌ RenderEngine: blurVerticalPipeline FAILED")
+        } else {
+            print("⚠️ RenderEngine: blurVerticalFragment shader not found")
+        }
+
+        if let fragmentFunction = library.makeFunction(name: "bloomCompositeFragment") {
+            bloomCompositePipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
+            print(bloomCompositePipeline != nil ? "✅ RenderEngine: bloomCompositePipeline created" : "❌ RenderEngine: bloomCompositePipeline FAILED")
+        } else {
+            print("⚠️ RenderEngine: bloomCompositeFragment shader not found")
+        }
+
+        // Halation 4-pass Pipelines
+        if let fragmentFunction = library.makeFunction(name: "halationThresholdFragment") {
+            halationThresholdPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
+            print(halationThresholdPipeline != nil ? "✅ RenderEngine: halationThresholdPipeline created" : "❌ RenderEngine: halationThresholdPipeline FAILED")
+        } else {
+            print("⚠️ RenderEngine: halationThresholdFragment shader not found")
+        }
+
+        if let fragmentFunction = library.makeFunction(name: "halationCompositeFragment") {
+            halationCompositePipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
+            print(halationCompositePipeline != nil ? "✅ RenderEngine: halationCompositePipeline created" : "❌ RenderEngine: halationCompositePipeline FAILED")
+        } else {
+            print("⚠️ RenderEngine: halationCompositeFragment shader not found")
         }
 
         // Instant Frame Pipeline

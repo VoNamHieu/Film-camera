@@ -179,22 +179,76 @@ class FilterRenderer {
 
     private func applyBloom(input: MTLTexture, output: MTLTexture,
                            config: BloomConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.bloomPipeline else { return false }
-
-        renderPassDescriptor.colorAttachments[0].texture = output
-
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else {
+        guard let thresholdPipeline = RenderEngine.shared.bloomThresholdPipeline,
+              let hBlurPipeline = RenderEngine.shared.blurHorizontalPipeline,
+              let vBlurPipeline = RenderEngine.shared.blurVerticalPipeline,
+              let compositePipeline = RenderEngine.shared.bloomCompositePipeline else {
+            print("⚠️ FilterRenderer: Bloom 4-pass pipelines not available")
             return false
         }
 
-        renderEncoder.setRenderPipelineState(pipeline)
-        renderEncoder.setFragmentTexture(input, index: 0)
+        let texturePool = RenderEngine.shared.texturePool
+        let width = input.width
+        let height = input.height
+
+        // Allocate intermediate textures
+        guard let bloomThreshold = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurH = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurV = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm) else {
+            print("⚠️ FilterRenderer: Failed to allocate bloom intermediate textures")
+            return false
+        }
 
         var params = prepareBloomParams(config)
-        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+        var radius = config.radius
 
-        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-        renderEncoder.endEncoding()
+        // Pass 1: Extract bright pixels
+        renderPassDescriptor.colorAttachments[0].texture = bloomThreshold
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(thresholdPipeline)
+            encoder.setFragmentTexture(input, index: 0)
+            encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Pass 2: Horizontal blur
+        renderPassDescriptor.colorAttachments[0].texture = blurH
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(hBlurPipeline)
+            encoder.setFragmentTexture(bloomThreshold, index: 0)
+            encoder.setFragmentBytes(&radius, length: MemoryLayout<Float>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Pass 3: Vertical blur
+        renderPassDescriptor.colorAttachments[0].texture = blurV
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(vBlurPipeline)
+            encoder.setFragmentTexture(blurH, index: 0)
+            encoder.setFragmentBytes(&radius, length: MemoryLayout<Float>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Pass 4: Composite bloom with original
+        renderPassDescriptor.colorAttachments[0].texture = output
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(compositePipeline)
+            encoder.setFragmentTexture(input, index: 0)
+            encoder.setFragmentTexture(blurV, index: 1)
+            encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Recycle textures after GPU completes
+        commandBuffer.addCompletedHandler { _ in
+            texturePool.recycleTexture(bloomThreshold)
+            texturePool.recycleTexture(blurH)
+            texturePool.recycleTexture(blurV)
+        }
 
         return true
     }
@@ -223,22 +277,76 @@ class FilterRenderer {
 
     private func applyHalation(input: MTLTexture, output: MTLTexture,
                               config: HalationConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.halationPipeline else { return false }
-
-        renderPassDescriptor.colorAttachments[0].texture = output
-
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else {
+        guard let thresholdPipeline = RenderEngine.shared.halationThresholdPipeline,
+              let hBlurPipeline = RenderEngine.shared.blurHorizontalPipeline,
+              let vBlurPipeline = RenderEngine.shared.blurVerticalPipeline,
+              let compositePipeline = RenderEngine.shared.halationCompositePipeline else {
+            print("⚠️ FilterRenderer: Halation 4-pass pipelines not available")
             return false
         }
 
-        renderEncoder.setRenderPipelineState(pipeline)
-        renderEncoder.setFragmentTexture(input, index: 0)
+        let texturePool = RenderEngine.shared.texturePool
+        let width = input.width
+        let height = input.height
+
+        // Allocate intermediate textures
+        guard let halationThreshold = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurH = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurV = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm) else {
+            print("⚠️ FilterRenderer: Failed to allocate halation intermediate textures")
+            return false
+        }
 
         var params = prepareHalationParams(config)
-        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+        var radius = config.radius
 
-        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-        renderEncoder.endEncoding()
+        // Pass 1: Extract bright pixels with red/orange tint
+        renderPassDescriptor.colorAttachments[0].texture = halationThreshold
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(thresholdPipeline)
+            encoder.setFragmentTexture(input, index: 0)
+            encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Pass 2: Horizontal blur (reuse bloom blur shader)
+        renderPassDescriptor.colorAttachments[0].texture = blurH
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(hBlurPipeline)
+            encoder.setFragmentTexture(halationThreshold, index: 0)
+            encoder.setFragmentBytes(&radius, length: MemoryLayout<Float>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Pass 3: Vertical blur (reuse bloom blur shader)
+        renderPassDescriptor.colorAttachments[0].texture = blurV
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(vBlurPipeline)
+            encoder.setFragmentTexture(blurH, index: 0)
+            encoder.setFragmentBytes(&radius, length: MemoryLayout<Float>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Pass 4: Composite halation with original
+        renderPassDescriptor.colorAttachments[0].texture = output
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+            encoder.setRenderPipelineState(compositePipeline)
+            encoder.setFragmentTexture(input, index: 0)
+            encoder.setFragmentTexture(blurV, index: 1)
+            encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+
+        // Recycle textures after GPU completes
+        commandBuffer.addCompletedHandler { _ in
+            texturePool.recycleTexture(halationThreshold)
+            texturePool.recycleTexture(blurH)
+            texturePool.recycleTexture(blurV)
+        }
 
         return true
     }

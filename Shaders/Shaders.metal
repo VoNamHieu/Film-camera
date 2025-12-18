@@ -274,7 +274,12 @@ fragment float4 vignetteFragment(
     return color;
 }
 
-fragment float4 bloomFragment(
+// ═══════════════════════════════════════════════════════════════════
+// BLOOM SHADER - 4 PASS (Optimized Separable Blur)
+// ═══════════════════════════════════════════════════════════════════
+
+// PASS 1: BLOOM THRESHOLD EXTRACTION
+fragment float4 bloomThresholdFragment(
     VertexOut in [[stage_in]],
     texture2d<float> inputTexture [[texture(0)]],
     constant BloomParams &p [[buffer(0)]]
@@ -282,37 +287,105 @@ fragment float4 bloomFragment(
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     float4 color = inputTexture.sample(s, in.texCoord);
 
-    if (p.enabled == 0) return color;
+    if (p.enabled == 0) return float4(0.0);
 
-    float3 bloom = float3(0.0);
-    float totalWeight = 0.0;
-    int radius = int(p.radius);
-    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+    // Soft threshold extraction (giống HTML line 10365-10380)
+    float luma = dot(color.rgb, float3(0.2126, 0.7152, 0.0722));
+    float softThreshold = p.threshold * 0.7;
 
-    // Gaussian Blur đơn giản (để tối ưu performance nên dùng tách pass X/Y, nhưng đây là MVP)
-    for (int x = -radius; x <= radius; x+=2) { // Step 2 để tối ưu
-        for (int y = -radius; y <= radius; y+=2) {
-            float2 offset = float2(x, y) * texelSize;
-            float3 sample = inputTexture.sample(s, in.texCoord + offset).rgb;
-            float bLuma = luminance(sample);
-
-            if (bLuma > p.threshold) {
-                float weight = exp(-(float(x*x + y*y)) / (2.0 * (p.radius/2.0) * (p.radius/2.0)));
-                bloom += sample * weight;
-                totalWeight += weight;
-            }
-        }
+    if (luma > softThreshold) {
+        float t = max(0.0, (luma - softThreshold) / (1.0 - softThreshold));
+        float bloomStrength = pow(t, 1.5);
+        return float4(color.rgb * bloomStrength * p.colorTint, 1.0);
     }
 
-    if (totalWeight > 0.0) {
-        bloom /= totalWeight;
-        color.rgb += bloom * p.intensity * p.colorTint;
-    }
-
-    return saturate(color);
+    return float4(0.0, 0.0, 0.0, 1.0);
 }
 
-fragment float4 halationFragment(
+// PASS 2: HORIZONTAL BLUR (Separable)
+fragment float4 blurHorizontalFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant float &radius [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+
+    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+
+    // Gaussian weights (pre-computed for radius ~16)
+    const int KERNEL_SIZE = 9;
+    float weights[KERNEL_SIZE] = {
+        0.0162, 0.0540, 0.1216, 0.1945, 0.2270,
+        0.1945, 0.1216, 0.0540, 0.0162
+    };
+    float offsets[KERNEL_SIZE] = {-4, -3, -2, -1, 0, 1, 2, 3, 4};
+
+    float3 result = float3(0.0);
+    float weightSum = 0.0;
+
+    for (int i = 0; i < KERNEL_SIZE; i++) {
+        float2 offset = float2(offsets[i] * radius * 0.25, 0.0) * texelSize;
+        result += inputTexture.sample(s, in.texCoord + offset).rgb * weights[i];
+        weightSum += weights[i];
+    }
+
+    return float4(result / weightSum, 1.0);
+}
+
+// PASS 3: VERTICAL BLUR (Separable)
+fragment float4 blurVerticalFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant float &radius [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+
+    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+
+    const int KERNEL_SIZE = 9;
+    float weights[KERNEL_SIZE] = {
+        0.0162, 0.0540, 0.1216, 0.1945, 0.2270,
+        0.1945, 0.1216, 0.0540, 0.0162
+    };
+    float offsets[KERNEL_SIZE] = {-4, -3, -2, -1, 0, 1, 2, 3, 4};
+
+    float3 result = float3(0.0);
+    float weightSum = 0.0;
+
+    for (int i = 0; i < KERNEL_SIZE; i++) {
+        float2 offset = float2(0.0, offsets[i] * radius * 0.25) * texelSize;
+        result += inputTexture.sample(s, in.texCoord + offset).rgb * weights[i];
+        weightSum += weights[i];
+    }
+
+    return float4(result / weightSum, 1.0);
+}
+
+// PASS 4: BLOOM COMPOSITE
+fragment float4 bloomCompositeFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> originalTexture [[texture(0)]],
+    texture2d<float> blurredBloomTexture [[texture(1)]],
+    constant BloomParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+
+    float4 original = originalTexture.sample(s, in.texCoord);
+    float4 bloom = blurredBloomTexture.sample(s, in.texCoord);
+
+    // Additive blend (giống HTML line 10385-10389)
+    float softness = 0.8;
+    original.rgb = saturate(original.rgb + bloom.rgb * p.intensity * softness);
+
+    return original;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HALATION SHADER - 4 PASS (Separable Blur with Red/Orange Tint)
+// ═══════════════════════════════════════════════════════════════════
+
+// PASS 1: HALATION THRESHOLD EXTRACTION
+fragment float4 halationThresholdFragment(
     VertexOut in [[stage_in]],
     texture2d<float> inputTexture [[texture(0)]],
     constant HalationParams &p [[buffer(0)]]
@@ -320,34 +393,38 @@ fragment float4 halationFragment(
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     float4 color = inputTexture.sample(s, in.texCoord);
 
-    if (p.enabled == 0) return color;
+    if (p.enabled == 0) return float4(0.0);
 
-    // Halation logic (Red Glow)
-    float3 halo = float3(0.0);
-    float totalWeight = 0.0;
-    int radius = int(p.radius);
-    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+    float luma = dot(color.rgb, float3(0.2126, 0.7152, 0.0722));
 
-    for (int x = -radius; x <= radius; x+=3) {
-        for (int y = -radius; y <= radius; y+=3) {
-            float2 offset = float2(x, y) * texelSize;
-            float3 sample = inputTexture.sample(s, in.texCoord + offset).rgb;
-            float bLuma = sample.r; // Red channel is mostly responsible for halation
-
-            if (bLuma > p.threshold) {
-                float weight = exp(-(float(x*x + y*y)) / (2.0 * (p.radius/2.5) * (p.radius/2.5)));
-                halo += sample * weight;
-                totalWeight += weight;
-            }
-        }
+    if (luma > p.threshold) {
+        float strength = (luma - p.threshold) / (1.0 - p.threshold);
+        // Halation color: đỏ/cam (Cinestill 800T style) RGB(255, 100, 50)
+        float3 halationColor = float3(1.0, 0.39, 0.20);
+        return float4(halationColor * strength * p.color, 1.0);
     }
 
-    if (totalWeight > 0.0) {
-        halo /= totalWeight;
-        color.rgb += halo * p.color * p.intensity * p.softness;
-    }
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
 
-    return saturate(color);
+// Halation uses same blurHorizontalFragment and blurVerticalFragment
+
+// PASS 4: HALATION COMPOSITE
+fragment float4 halationCompositeFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> originalTexture [[texture(0)]],
+    texture2d<float> blurredHalationTexture [[texture(1)]],
+    constant HalationParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+
+    float4 original = originalTexture.sample(s, in.texCoord);
+    float4 halation = blurredHalationTexture.sample(s, in.texCoord);
+
+    // Additive blend with softness
+    original.rgb = saturate(original.rgb + halation.rgb * p.intensity * p.softness);
+
+    return original;
 }
 
 fragment float4 instantFrameFragment(
