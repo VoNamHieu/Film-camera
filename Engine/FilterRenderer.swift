@@ -170,9 +170,9 @@ class FilterRenderer {
         let height = input.height
 
         // Allocate intermediate textures
-        guard let bloomThreshold = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
-              let blurH = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
-              let blurV = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm) else {
+        guard let bloomThreshold = texturePool.renderTargetTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurH = texturePool.renderTargetTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurV = texturePool.renderTargetTexture(width: width, height: height, pixelFormat: .bgra8Unorm) else {
             print("⚠️ FilterRenderer: Failed to allocate bloom intermediate textures")
             return false
         }
@@ -223,9 +223,9 @@ class FilterRenderer {
 
         // Recycle textures after GPU completes
         commandBuffer.addCompletedHandler { _ in
-            texturePool.recycleTexture(bloomThreshold)
-            texturePool.recycleTexture(blurH)
-            texturePool.recycleTexture(blurV)
+            texturePool.recycle(bloomThreshold)
+            texturePool.recycle(blurH)
+            texturePool.recycle(blurV)
         }
 
         return true
@@ -265,9 +265,9 @@ class FilterRenderer {
         let height = input.height
 
         // Allocate intermediate textures
-        guard let halationThreshold = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
-              let blurH = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
-              let blurV = texturePool.requestTexture(width: width, height: height, pixelFormat: .bgra8Unorm) else {
+        guard let halationThreshold = texturePool.renderTargetTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurH = texturePool.renderTargetTexture(width: width, height: height, pixelFormat: .bgra8Unorm),
+              let blurV = texturePool.renderTargetTexture(width: width, height: height, pixelFormat: .bgra8Unorm) else {
             print("⚠️ FilterRenderer: Failed to allocate halation intermediate textures")
             return false
         }
@@ -318,9 +318,9 @@ class FilterRenderer {
 
         // Recycle textures after GPU completes
         commandBuffer.addCompletedHandler { _ in
-            texturePool.recycleTexture(halationThreshold)
-            texturePool.recycleTexture(blurH)
-            texturePool.recycleTexture(blurV)
+            texturePool.recycle(halationThreshold)
+            texturePool.recycle(blurH)
+            texturePool.recycle(blurV)
         }
 
         return true
