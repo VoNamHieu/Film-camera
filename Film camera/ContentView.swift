@@ -49,8 +49,8 @@ struct ContentView: View {
     
     private var cameraContentView: some View {
         ZStack {
-            // Camera Preview
-            CameraPreviewView(cameraManager: cameraManager)
+            // Camera Preview with Real-time Filtering
+            MetalPreviewView(cameraManager: cameraManager, selectedPreset: $selectedPreset)
                 .ignoresSafeArea()
             
             // Loading overlay when session not ready
