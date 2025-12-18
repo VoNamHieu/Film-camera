@@ -1,6 +1,6 @@
 // LUTLoader.swift
 // Film Camera - .cube LUT File Loader
-// ★ FIX: Better path handling for "luts/xxx.cube" format
+// ★ FIX: Better path handling + Debug logging
 
 import Foundation
 import Metal
@@ -13,16 +13,43 @@ class LUTLoader {
         // ★ FIX: Handle "luts/xxx.cube" path format
         let cleanFilename = extractFilename(from: filename)
         
+        // ★ DEBUG: List all .cube files in bundle
+        print("🔍 Looking for LUT: \(filename) (cleaned: \(cleanFilename))")
+        
+        #if DEBUG
+        listBundleCubeFiles()
+        #endif
+        
         // Try multiple locations
         let url = findLUTFile(named: cleanFilename)
         
         guard let fileURL = url else {
-            print("❌ LUT file not found: \(filename) (cleaned: \(cleanFilename))")
+            print("❌ LUT file NOT FOUND: \(filename) (cleaned: \(cleanFilename))")
             return nil
         }
         
-        print("✅ LUT file found: \(fileURL.lastPathComponent)")
+        print("✅ LUT file FOUND: \(fileURL.lastPathComponent)")
         return load(url: fileURL, device: device)
+    }
+    
+    /// Debug: List all .cube files in bundle
+    private static func listBundleCubeFiles() {
+        if let resourcePath = Bundle.main.resourcePath {
+            let fm = FileManager.default
+            if let enumerator = fm.enumerator(atPath: resourcePath) {
+                let allFiles = enumerator.allObjects.compactMap { $0 as? String }
+                let cubeFiles = allFiles.filter { $0.lowercased().hasSuffix(".cube") }
+                if cubeFiles.isEmpty {
+                    print("⚠️ NO .cube files found in bundle! Check Target Membership.")
+                } else {
+                    print("📁 All .cube files in bundle (\(cubeFiles.count)):")
+                    cubeFiles.prefix(10).forEach { print("   - \($0)") }
+                    if cubeFiles.count > 10 {
+                        print("   ... and \(cubeFiles.count - 10) more")
+                    }
+                }
+            }
+        }
     }
     
     /// Extract filename from path like "luts/Kodak_Portra_400_Linear.cube"

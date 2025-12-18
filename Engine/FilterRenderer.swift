@@ -229,19 +229,27 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
+        // ★ FIX: Prepare params AFTER checking if LUT actually loaded
         var params = prepareColorGradingParams(preset)
-        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
-
+        
+        // ★ FIX: Only set useLUT = 1 if texture actually loaded successfully
+        var lutLoaded = false
         if let lutFile = preset.lutFile, let lutTexture = RenderEngine.shared.loadLUT(named: lutFile) {
             renderEncoder.setFragmentTexture(lutTexture, index: 1)
+            lutLoaded = true
         }
+        
+        // ★ FIX: Override useLUT based on actual load status
+        params.useLUT = lutLoaded ? 1 : 0
+        
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
 
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
         return output
     }
-
+    
     private func applyGrain(input: MTLTexture, config: GrainConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         guard let pipeline = RenderEngine.shared.grainPipeline,
               let output = getNextOutputTexture() else { return nil }

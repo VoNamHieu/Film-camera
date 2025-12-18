@@ -37,6 +37,31 @@
 		04C280A62EF3AF75006E43C6 /* MetalPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalPreviewView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		04D5CB022EF402220081976E /* Exceptions for "LUTs" folder in "Film camera" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				classic_chrome_linear.cube,
+				Fuji_400H_Linear.cube,
+				Fuji_Astia_100F_Linear.cube,
+				Fuji_Eterna_linear.cube,
+				Fuji_Superia_400_Linear.cube,
+				Fuji_Velvia_100_Linear.cube,
+				Kodak_ColorPlus_200_Linear.cube,
+				Kodak_Gold_200_v2_linear.cube,
+				Kodak_Portra_160_Linear.cube,
+				Kodak_Portra_400_Linear.cube,
+				"Kodak_Tri-X_400_Linear.cube",
+				"Kodak_Tri-X_400_Orange_Linear.cube",
+				Kodak_Ultramax_400_linear_inout.cube,
+				Nostalgic_Neg_Linear.cube,
+				Polaroid_600_Linear.cube,
+				provia_100f_33.cube,
+			);
+			target = 04C2800C2EF28DAA006E43C6 /* Film camera */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		04C2800F2EF28DAA006E43C6 /* Film camera */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -45,6 +70,9 @@
 		};
 		04C2803B2EF28FE8006E43C6 /* LUTs */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				04D5CB022EF402220081976E /* Exceptions for "LUTs" folder in "Film camera" target */,
+			);
 			path = LUTs;
 			sourceTree = "<group>";
 		};
