@@ -1,5 +1,6 @@
 // LUTLoader.swift
 // Film Camera - .cube LUT File Loader
+// ★ FIX: Better path handling for "luts/xxx.cube" format
 
 import Foundation
 import Metal
@@ -9,22 +10,68 @@ class LUTLoader {
     
     /// Load a .cube file and create a 3D texture
     static func load(filename: String, device: MTLDevice) -> MTLTexture? {
-        // Try bundle first, then documents
-        let url = Bundle.main.url(forResource: filename, withExtension: nil)
-            ?? Bundle.main.url(forResource: (filename as NSString).deletingPathExtension, withExtension: "cube")
+        // ★ FIX: Handle "luts/xxx.cube" path format
+        let cleanFilename = extractFilename(from: filename)
+        
+        // Try multiple locations
+        let url = findLUTFile(named: cleanFilename)
         
         guard let fileURL = url else {
-            print("LUT file not found: \(filename)")
+            print("❌ LUT file not found: \(filename) (cleaned: \(cleanFilename))")
             return nil
         }
         
+        print("✅ LUT file found: \(fileURL.lastPathComponent)")
         return load(url: fileURL, device: device)
+    }
+    
+    /// Extract filename from path like "luts/Kodak_Portra_400_Linear.cube"
+    private static func extractFilename(from path: String) -> String {
+        // Remove directory components
+        let filename = (path as NSString).lastPathComponent
+        return filename
+    }
+    
+    /// Search for LUT file in multiple locations
+    private static func findLUTFile(named filename: String) -> URL? {
+        let filenameWithoutExtension = (filename as NSString).deletingPathExtension
+        
+        // Try these locations in order:
+        let searchPaths: [(String?, String?)] = [
+            (filename, nil),                           // Exact filename
+            (filenameWithoutExtension, "cube"),        // Without extension
+            ("LUTs/\(filename)", nil),                 // In LUTs folder
+            ("luts/\(filename)", nil),                 // In luts folder (lowercase)
+            ("Resources/LUTs/\(filename)", nil),       // In Resources/LUTs
+        ]
+        
+        for (name, ext) in searchPaths {
+            if let name = name {
+                if let ext = ext {
+                    if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                        return url
+                    }
+                } else {
+                    if let url = Bundle.main.url(forResource: name, withExtension: nil) {
+                        return url
+                    }
+                    // Also try without path components
+                    let baseName = (name as NSString).lastPathComponent
+                    let baseNameWithoutExt = (baseName as NSString).deletingPathExtension
+                    if let url = Bundle.main.url(forResource: baseNameWithoutExt, withExtension: "cube") {
+                        return url
+                    }
+                }
+            }
+        }
+        
+        return nil
     }
     
     /// Load a .cube file from URL
     static func load(url: URL, device: MTLDevice) -> MTLTexture? {
         guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            print("Could not read LUT file: \(url)")
+            print("❌ Could not read LUT file: \(url)")
             return nil
         }
         
@@ -51,6 +98,7 @@ class LUTLoader {
                 let parts = trimmed.split(separator: " ")
                 if parts.count >= 2, let s = Int(parts[1]) {
                     size = s
+                    print("📊 LUT size: \(size)x\(size)x\(size)")
                 }
                 continue
             }
@@ -67,8 +115,9 @@ class LUTLoader {
             }
         }
         
-        guard size > 0, data.count == size * size * size * 3 else {
-            print("Invalid LUT data: size=\(size), values=\(data.count)")
+        let expectedCount = size * size * size * 3
+        guard size > 0, data.count == expectedCount else {
+            print("❌ Invalid LUT data: size=\(size), values=\(data.count), expected=\(expectedCount)")
             return nil
         }
         
@@ -86,6 +135,7 @@ class LUTLoader {
         descriptor.usage = .shaderRead
         
         guard let texture = device.makeTexture(descriptor: descriptor) else {
+            print("❌ Failed to create 3D texture")
             return nil
         }
         
@@ -119,6 +169,7 @@ class LUTLoader {
             )
         }
         
+        print("✅ LUT texture created: \(size)x\(size)x\(size)")
         return texture
     }
 }

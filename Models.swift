@@ -1,5 +1,6 @@
 // Models.swift
 // Film Camera - Professional Model (Merged with WebGL Engine)
+// ★ FIX: InstantFrameConfig default changed from enabled: true to enabled: false
 
 import Foundation
 import SwiftUI
@@ -37,13 +38,12 @@ struct ColorAdjustments: Codable {
 }
 
 // MARK: - Selective Color (Cập nhật theo WebGL Engine)
-// Quan trọng: Logic này thay thế logic cũ để hỗ trợ chỉnh Hue Shift và Luminance từng kênh
 struct SelectiveColorAdjustment: Codable, Hashable {
-    var hue: Float        // Màu mục tiêu (Normalized 0.0 - 1.0 hoặc Degree tùy quy ước, nên dùng 0-1 cho Metal)
-    var range: Float      // Phạm vi ảnh hưởng
-    var sat: Float        // Tăng giảm Saturation
-    var lum: Float        // Tăng giảm Luminance
-    var hueShift: Float   // Dịch chuyển Hue
+    var hue: Float
+    var range: Float
+    var sat: Float
+    var lum: Float
+    var hueShift: Float
 
     init(hue: Float, range: Float = 0.4, sat: Float = 0, lum: Float = 0, hueShift: Float = 0) {
         self.hue = hue
@@ -54,13 +54,13 @@ struct SelectiveColorAdjustment: Codable, Hashable {
     }
 }
 
-// MARK: - Lens Distortion (Mới từ WebGL - Disposable Camera)
+// MARK: - Lens Distortion
 struct LensDistortionConfig: Codable {
     var enabled: Bool
-    var k1: Float         // Barrel distortion (Méo lồi/lõm)
-    var k2: Float         // Edge distortion (Méo rìa)
-    var caStrength: Float // Chromatic Aberration (Lệch màu RGB)
-    var scale: Float      // Zoom crop để cắt phần đen
+    var k1: Float
+    var k2: Float
+    var caStrength: Float
+    var scale: Float
 
     init(enabled: Bool = false, k1: Float = 0, k2: Float = 0, caStrength: Float = 0, scale: Float = 1.0) {
         self.enabled = enabled
@@ -81,7 +81,7 @@ struct SplitToneConfig: Codable {
     }
 }
 
-// MARK: - RGB Curves (Giữ nguyên - Rất mạnh cho Film Simulation)
+// MARK: - RGB Curves
 struct RGBCurvePoint: Codable {
     var input: Float, output: Float
     init(input: Float, output: Float) { self.input = input; self.output = output }
@@ -94,8 +94,7 @@ struct RGBCurves: Codable {
     }
 }
 
-// MARK: - Grain (Complex System - Giữ nguyên)
-// RenderEngine sẽ chịu trách nhiệm "làm phẳng" (flatten) struct này khi gửi xuống Shader đơn giản
+// MARK: - Grain
 struct GrainChannel: Codable {
     var intensity: Float, size: Float, seed: Int, softness: Float
     init(intensity: Float = 0.1, size: Float = 1.0, seed: Int = 1000, softness: Float = 0.5) {
@@ -172,7 +171,7 @@ struct GrainConfig: Codable {
     }
 }
 
-// MARK: - Bloom (Giữ nguyên)
+// MARK: - Bloom
 struct ColorTint: Codable {
     var r: Float, g: Float, b: Float
     init(r: Float = 1.0, g: Float = 1.0, b: Float = 1.0) { self.r = r; self.g = g; self.b = b }
@@ -187,7 +186,7 @@ struct BloomConfig: Codable {
     }
 }
 
-// MARK: - Vignette (Giữ nguyên)
+// MARK: - Vignette
 struct VignetteConfig: Codable {
     var enabled: Bool, intensity: Float, roundness: Float, feather: Float, midpoint: Float
     init(enabled: Bool = true, intensity: Float = 0.15, roundness: Float = 0.8, feather: Float = 0.6, midpoint: Float = 0.5) {
@@ -196,7 +195,7 @@ struct VignetteConfig: Codable {
     }
 }
 
-// MARK: - Halation (Complex System - Giữ nguyên)
+// MARK: - Halation
 struct HalationColor: Codable {
     var r: Float, g: Float, b: Float
     init(r: Float = 1.0, g: Float = 0.3, b: Float = 0.15) { self.r = r; self.g = g; self.b = b }
@@ -222,7 +221,7 @@ struct HalationConfig: Codable {
     }
 }
 
-// MARK: - Instant Film (Complex System - Giữ nguyên)
+// MARK: - Instant Film
 struct ChemicalFade: Codable {
     var enabled: Bool, edgeFade: Float, cornerDarkening: Float, unevenDevelopment: Float
     init(enabled: Bool = true, edgeFade: Float = 0.12, cornerDarkening: Float = 0.08, unevenDevelopment: Float = 0.05) {
@@ -249,16 +248,17 @@ struct FrameShadow: Codable {
     }
 }
 
+// ★★★ FIX: Changed default from enabled: true to enabled: false ★★★
 struct InstantFrameConfig: Codable {
     var enabled: Bool, type: String, borderColor: BorderColor, borderWidth: BorderWidth, texture: String, shadow: FrameShadow
-    init(enabled: Bool = true, type: String = "polaroid_600", borderColor: BorderColor = BorderColor(),
+    init(enabled: Bool = false, type: String = "polaroid_600", borderColor: BorderColor = BorderColor(),
          borderWidth: BorderWidth = BorderWidth(), texture: String = "matte", shadow: FrameShadow = FrameShadow()) {
         self.enabled = enabled; self.type = type; self.borderColor = borderColor
         self.borderWidth = borderWidth; self.texture = texture; self.shadow = shadow
     }
 }
 
-// MARK: - Skin Tone & Tone Mapping (Giữ nguyên)
+// MARK: - Skin Tone & Tone Mapping
 struct SkinToneProtection: Codable {
     var enabled: Bool, hueCenter: Float, hueRange: Float, satProtection: Float, warmthBoost: Float
     init(enabled: Bool = false, hueCenter: Float = 25, hueRange: Float = 30, satProtection: Float = 0.4, warmthBoost: Float = 0.03) {
@@ -289,22 +289,19 @@ struct FilmStock: Codable {
 struct FilterPreset: Codable, Identifiable {
     let id: String, label: String, category: FilterCategory
 
-    // Core Params
     var lutId: String?, lutFile: String?, lutIntensity: Float, colorSpace: String
     var colorAdjustments: ColorAdjustments
     var splitTone: SplitToneConfig
-    var selectiveColor: [SelectiveColorAdjustment] // Updated WebGL Logic
-    var lensDistortion: LensDistortionConfig       // Added WebGL Logic
+    var selectiveColor: [SelectiveColorAdjustment]
+    var lensDistortion: LensDistortionConfig
     var rgbCurves: RGBCurves
 
-    // Effects
-    var grain: GrainConfig // Complex
+    var grain: GrainConfig
     var bloom: BloomConfig
     var vignette: VignetteConfig
-    var halation: HalationConfig // Complex
-    var instantFrame: InstantFrameConfig // Complex
+    var halation: HalationConfig
+    var instantFrame: InstantFrameConfig
 
-    // Advanced
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
     var filmStock: FilmStock

@@ -1,6 +1,6 @@
 // MetalPreviewView.swift
-// Film Camera - Metal-based Camera Preview with Real-time Filtering (FIXED VERSION)
-// Fix: Drawable presentation through FilterRenderer, proper synchronization
+// Film Camera - Metal-based Camera Preview with Real-time Filtering
+// ★ FIX: Added proper video orientation handling
 
 import SwiftUI
 import MetalKit
@@ -19,8 +19,6 @@ struct MetalPreviewView: UIViewRepresentable {
         mtkView.preferredFramesPerSecond = 60
         mtkView.enableSetNeedsDisplay = false
         mtkView.isPaused = false
-        
-        // ★ Enable auto-resize for rotation handling
         mtkView.autoResizeDrawable = true
 
         context.coordinator.setupVideoOutput(cameraManager: cameraManager)
@@ -30,6 +28,8 @@ struct MetalPreviewView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MTKView, context: Context) {
         context.coordinator.currentPreset = selectedPreset
+        // ★ Update camera position for mirror handling
+        context.coordinator.isFrontCamera = cameraManager.currentPosition == .front
     }
 
     func makeCoordinator() -> Coordinator {
@@ -40,10 +40,15 @@ struct MetalPreviewView: UIViewRepresentable {
 
     class Coordinator: NSObject, MTKViewDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
         var currentPreset: FilterPreset
+        var isFrontCamera: Bool = false
+        
         private var currentPixelBuffer: CVPixelBuffer?
         private var textureCache: CVMetalTextureCache?
         private let filterRenderer: FilterRenderer
         private var videoOutputAdded = false
+        
+        // ★ FIX: Track video orientation
+        private var videoOrientation: CGImagePropertyOrientation = .up
         
         // Frame timing for debugging
         private var lastFrameTime: CFAbsoluteTime = 0
@@ -63,6 +68,12 @@ struct MetalPreviewView: UIViewRepresentable {
             if !existingOutputs.isEmpty {
                 if let existingOutput = existingOutputs.first {
                     existingOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output", qos: .userInteractive))
+                    
+                    // ★ FIX: Set video orientation on connection
+                    if let connection = existingOutput.connection(with: .video) {
+                        configureVideoOrientation(connection)
+                    }
+                    
                     videoOutputAdded = true
                 }
                 return
@@ -73,33 +84,52 @@ struct MetalPreviewView: UIViewRepresentable {
             videoOutput.videoSettings = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
             ]
-            
-            // Drop late frames to maintain smooth preview
             videoOutput.alwaysDiscardsLateVideoFrames = true
 
             cameraManager.session.beginConfiguration()
             if cameraManager.session.canAddOutput(videoOutput) {
                 cameraManager.session.addOutput(videoOutput)
+                
+                // ★ FIX: Configure orientation AFTER adding output
+                if let connection = videoOutput.connection(with: .video) {
+                    configureVideoOrientation(connection)
+                }
+                
                 videoOutputAdded = true
             }
             cameraManager.session.commitConfiguration()
+        }
+        
+        // ★ FIX: Configure video orientation for portrait mode
+        private func configureVideoOrientation(_ connection: AVCaptureConnection) {
+            // Set video orientation to portrait
+            if connection.isVideoRotationAngleSupported(90) {
+                connection.videoRotationAngle = 90  // Portrait orientation
+            }
+            
+            // Handle mirroring for front camera
+            if connection.isVideoMirroringSupported {
+                connection.isVideoMirrored = isFrontCamera
+            }
         }
 
         // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
 
         func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+            // ★ FIX: Update orientation on each frame (handles rotation changes)
+            configureVideoOrientation(connection)
+            
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
             currentPixelBuffer = pixelBuffer
         }
         
         func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-            // Frame dropped - this is expected under heavy load
+            // Frame dropped - expected under heavy load
         }
 
         // MARK: - MTKViewDelegate
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-            // Handle view size changes (rotation, etc.)
             print("🎬 MetalPreviewView: Drawable size changed to \(size)")
         }
 
@@ -110,7 +140,6 @@ struct MetalPreviewView: UIViewRepresentable {
                 return
             }
 
-            // Create Metal texture from pixel buffer
             var cvTexture: CVMetalTexture?
             let width = CVPixelBufferGetWidth(pixelBuffer)
             let height = CVPixelBufferGetHeight(pixelBuffer)
@@ -133,7 +162,6 @@ struct MetalPreviewView: UIViewRepresentable {
                 return
             }
 
-            // ★ FIX: Use renderToDrawable which handles presentation correctly
             filterRenderer.renderToDrawable(
                 input: inputTexture,
                 drawable: drawable,
@@ -141,10 +169,6 @@ struct MetalPreviewView: UIViewRepresentable {
                 commandQueue: RenderEngine.shared.commandQueue
             )
             
-            // ★ FIX: DO NOT call drawable.present() here!
-            // FilterRenderer.renderToDrawable() handles it via commandBuffer.present(drawable)
-            
-            // Debug: Track frame rate
             #if DEBUG
             trackFrameRate()
             #endif
