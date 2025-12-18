@@ -1,5 +1,6 @@
 // FilterRenderer.swift
-// Film Camera - Core Filter Rendering Pipeline (Adapter Layer)
+// Film Camera - Core Filter Rendering Pipeline (FIXED VERSION)
+// Fixes: Texture recycle timing, ping-pong buffer, separable blur
 
 import Foundation
 import Metal
@@ -10,115 +11,220 @@ class FilterRenderer {
     private let device: MTLDevice
     private var renderPassDescriptor: MTLRenderPassDescriptor
 
+    // Ping-pong buffers for proper texture management
+    private var pingPongTextures: [MTLTexture?] = [nil, nil]
+    private var pingPongIndex: Int = 0
+
     init() {
         self.device = RenderEngine.shared.device
         self.renderPassDescriptor = MTLRenderPassDescriptor()
 
-        // Configure render pass (single color attachment)
         renderPassDescriptor.colorAttachments[0].loadAction = .clear
         renderPassDescriptor.colorAttachments[0].storeAction = .store
         renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     }
 
-    // MARK: - Main Rendering Pipeline
-
-    func render(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) {
+    // MARK: - Main Rendering Pipeline (Render to Drawable)
+    
+    /// Render directly to drawable with proper presentation
+    func renderToDrawable(input: MTLTexture, drawable: CAMetalDrawable, preset: FilterPreset, commandQueue: MTLCommandQueue) {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             print("FilterRenderer: Failed to create command buffer")
             return
         }
 
-        // Get texture pool
         let texturePool = RenderEngine.shared.texturePool
 
-        // FIXED: requestTexture -> renderTargetTexture
+        // Allocate ping-pong buffers
         guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
             print("FilterRenderer: Failed to allocate intermediate textures")
             return
         }
 
+        // ★ FIX: Use ping-pong buffer pattern
+        pingPongTextures[0] = temp1
+        pingPongTextures[1] = temp2
+        pingPongIndex = 0
+
         var currentInput = input
-        var currentOutput = temp1
 
         // PASS 1: Lens Distortion
         if preset.lensDistortion.enabled {
-            if applyLensDistortion(input: currentInput, output: currentOutput,
-                                  params: preset.lensDistortion, commandBuffer: commandBuffer) {
-                swap(&currentInput, &currentOutput)
+            if let result = applyLensDistortion(input: currentInput, params: preset.lensDistortion, commandBuffer: commandBuffer) {
+                currentInput = result
             }
         }
 
         // PASS 2: Color Grading
-        if applyColorGrading(input: currentInput, output: currentOutput,
-                           preset: preset, commandBuffer: commandBuffer) {
-            swap(&currentInput, &currentOutput)
+        if let result = applyColorGrading(input: currentInput, preset: preset, commandBuffer: commandBuffer) {
+            currentInput = result
         }
 
         // PASS 3: Grain
         if preset.grain.enabled {
-            if applyGrain(input: currentInput, output: currentOutput,
-                        config: preset.grain, commandBuffer: commandBuffer) {
-                swap(&currentInput, &currentOutput)
+            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+                currentInput = result
             }
         }
 
-        // PASS 4: Bloom
+        // PASS 4: Bloom (Separable - 4 passes)
         if preset.bloom.enabled {
-            if applyBloom(input: currentInput, output: currentOutput,
-                        config: preset.bloom, commandBuffer: commandBuffer) {
-                swap(&currentInput, &currentOutput)
+            if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
+                currentInput = result
             }
         }
 
         // PASS 5: Vignette
         if preset.vignette.enabled {
-            if applyVignette(input: currentInput, output: currentOutput,
-                           config: preset.vignette, commandBuffer: commandBuffer) {
-                swap(&currentInput, &currentOutput)
+            if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
+                currentInput = result
             }
         }
 
-        // PASS 6: Halation
+        // PASS 6: Halation (Separable - 4 passes)
         if preset.halation.enabled {
-            if applyHalation(input: currentInput, output: currentOutput,
-                           config: preset.halation, commandBuffer: commandBuffer) {
-                swap(&currentInput, &currentOutput)
+            if let result = applyHalationSeparable(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
+                currentInput = result
             }
         }
 
         // PASS 7: Instant Frame
         if preset.instantFrame.enabled {
-            if applyInstantFrame(input: currentInput, output: currentOutput,
-                               config: preset.instantFrame, commandBuffer: commandBuffer) {
-                swap(&currentInput, &currentOutput)
+            if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
+                currentInput = result
             }
         }
 
-        // FINAL PASS
+        // FINAL PASS: Blit to drawable
+        blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
+
+        // ★ FIX: Present drawable through command buffer
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+
+        // ★ FIX: Recycle textures AFTER GPU completes
+        commandBuffer.addCompletedHandler { [weak texturePool] _ in
+            texturePool?.recycle(temp1)
+            texturePool?.recycle(temp2)
+        }
+    }
+
+    // MARK: - Render to Texture (for photo capture)
+    
+    func render(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) {
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            print("FilterRenderer: Failed to create command buffer")
+            return
+        }
+
+        let texturePool = RenderEngine.shared.texturePool
+
+        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+            print("FilterRenderer: Failed to allocate intermediate textures")
+            return
+        }
+
+        pingPongTextures[0] = temp1
+        pingPongTextures[1] = temp2
+        pingPongIndex = 0
+
+        var currentInput = input
+
+        // Same pipeline as renderToDrawable
+        if preset.lensDistortion.enabled {
+            if let result = applyLensDistortion(input: currentInput, params: preset.lensDistortion, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        if let result = applyColorGrading(input: currentInput, preset: preset, commandBuffer: commandBuffer) {
+            currentInput = result
+        }
+
+        if preset.grain.enabled {
+            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        if preset.bloom.enabled {
+            if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        if preset.vignette.enabled {
+            if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        if preset.halation.enabled {
+            if let result = applyHalationSeparable(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        if preset.instantFrame.enabled {
+            if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
         blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
 
         commandBuffer.commit()
 
-        // FIXED: returnTexture -> recycle
-        texturePool.recycle(temp1)
-        texturePool.recycle(temp2)
+        // ★ FIX: Recycle after completion
+        commandBuffer.addCompletedHandler { [weak texturePool] _ in
+            texturePool?.recycle(temp1)
+            texturePool?.recycle(temp2)
+        }
+    }
+
+    // MARK: - Ping-Pong Buffer Helper
+    
+    private func getNextOutputTexture() -> MTLTexture? {
+        let output = pingPongTextures[pingPongIndex]
+        pingPongIndex = 1 - pingPongIndex  // Toggle 0 ↔ 1
+        return output
     }
 
     // MARK: - Individual Filter Passes
 
-    private func applyLensDistortion(input: MTLTexture, output: MTLTexture,
-                                     params: LensDistortionConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        // Placeholder implementation
-        return false
-    }
-
-    private func applyColorGrading(input: MTLTexture, output: MTLTexture,
-                                   preset: FilterPreset, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.colorGradingPipeline else { return false }
+    private func applyLensDistortion(input: MTLTexture, params: LensDistortionConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.lensDistortionPipeline,
+              let output = getNextOutputTexture() else { return nil }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var metalParams = LensDistortionParams(
+            enabled: params.enabled ? 1 : 0,
+            k1: params.k1,
+            k2: params.k2,
+            caStrength: params.caStrength,
+            scale: params.scale
+        )
+        renderEncoder.setFragmentBytes(&metalParams, length: MemoryLayout<LensDistortionParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func applyColorGrading(input: MTLTexture, preset: FilterPreset, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.colorGradingPipeline,
+              let output = getNextOutputTexture() else { return nil }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
@@ -133,15 +239,15 @@ class FilterRenderer {
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
-        return true
+        return output
     }
 
-    private func applyGrain(input: MTLTexture, output: MTLTexture,
-                           config: GrainConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.grainPipeline else { return false }
+    private func applyGrain(input: MTLTexture, config: GrainConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.grainPipeline,
+              let output = getNextOutputTexture() else { return nil }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
@@ -152,34 +258,157 @@ class FilterRenderer {
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
-        return true
+        return output
     }
 
-    private func applyBloom(input: MTLTexture, output: MTLTexture,
-                           config: BloomConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.bloomPipeline else { return false }
-
-        renderPassDescriptor.colorAttachments[0].texture = output
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
-
-        renderEncoder.setRenderPipelineState(pipeline)
-        renderEncoder.setFragmentTexture(input, index: 0)
+    // MARK: - ★ SEPARABLE BLOOM PIPELINE (4 passes)
+    
+    private func applyBloomSeparable(input: MTLTexture, config: BloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        let texturePool = RenderEngine.shared.texturePool
+        
+        // Need extra textures for intermediate blur passes
+        guard let thresholdTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let horizontalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let verticalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let output = getNextOutputTexture() else { return nil }
 
         var params = prepareBloomParams(config)
-        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
 
-        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-        renderEncoder.endEncoding()
+        // Pass 1: Threshold extraction
+        if let pipeline = RenderEngine.shared.bloomThresholdPipeline {
+            renderPassDescriptor.colorAttachments[0].texture = thresholdTex
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(input, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
 
-        return true
+        // Pass 2: Horizontal blur
+        if let pipeline = RenderEngine.shared.bloomHorizontalPipeline {
+            renderPassDescriptor.colorAttachments[0].texture = horizontalTex
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(thresholdTex, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
+
+        // Pass 3: Vertical blur
+        if let pipeline = RenderEngine.shared.bloomVerticalPipeline {
+            renderPassDescriptor.colorAttachments[0].texture = verticalTex
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(horizontalTex, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
+
+        // Pass 4: Composite with original
+        if let pipeline = RenderEngine.shared.bloomCompositePipeline {
+            renderPassDescriptor.colorAttachments[0].texture = output
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(input, index: 0)      // Original
+                encoder.setFragmentTexture(verticalTex, index: 1) // Blurred bloom
+                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
+
+        // Recycle intermediate textures after completion
+        commandBuffer.addCompletedHandler { [weak texturePool] _ in
+            texturePool?.recycle(thresholdTex)
+            texturePool?.recycle(horizontalTex)
+            texturePool?.recycle(verticalTex)
+        }
+
+        return output
     }
 
-    private func applyVignette(input: MTLTexture, output: MTLTexture,
-                              config: VignetteConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.vignettePipeline else { return false }
+    // MARK: - ★ SEPARABLE HALATION PIPELINE (4 passes)
+    
+    private func applyHalationSeparable(input: MTLTexture, config: HalationConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        let texturePool = RenderEngine.shared.texturePool
+        
+        guard let thresholdTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let horizontalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let verticalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let output = getNextOutputTexture() else { return nil }
+
+        var params = prepareHalationParams(config)
+
+        // Pass 1: Threshold + red tint
+        if let pipeline = RenderEngine.shared.halationThresholdPipeline {
+            renderPassDescriptor.colorAttachments[0].texture = thresholdTex
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(input, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
+
+        // Pass 2: Horizontal blur
+        if let pipeline = RenderEngine.shared.halationHorizontalPipeline {
+            renderPassDescriptor.colorAttachments[0].texture = horizontalTex
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(thresholdTex, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
+
+        // Pass 3: Vertical blur
+        if let pipeline = RenderEngine.shared.halationVerticalPipeline {
+            renderPassDescriptor.colorAttachments[0].texture = verticalTex
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(horizontalTex, index: 0)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
+
+        // Pass 4: Additive composite
+        if let pipeline = RenderEngine.shared.halationCompositePipeline {
+            renderPassDescriptor.colorAttachments[0].texture = output
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(input, index: 0)
+                encoder.setFragmentTexture(verticalTex, index: 1)
+                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.endEncoding()
+            }
+        }
+
+        commandBuffer.addCompletedHandler { [weak texturePool] _ in
+            texturePool?.recycle(thresholdTex)
+            texturePool?.recycle(horizontalTex)
+            texturePool?.recycle(verticalTex)
+        }
+
+        return output
+    }
+
+    private func applyVignette(input: MTLTexture, config: VignetteConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.vignettePipeline,
+              let output = getNextOutputTexture() else { return nil }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
@@ -190,34 +419,15 @@ class FilterRenderer {
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
-        return true
+        return output
     }
 
-    private func applyHalation(input: MTLTexture, output: MTLTexture,
-                              config: HalationConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.halationPipeline else { return false }
+    private func applyInstantFrame(input: MTLTexture, config: InstantFrameConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.instantFramePipeline,
+              let output = getNextOutputTexture() else { return nil }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
-
-        renderEncoder.setRenderPipelineState(pipeline)
-        renderEncoder.setFragmentTexture(input, index: 0)
-
-        var params = prepareHalationParams(config)
-        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
-
-        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-        renderEncoder.endEncoding()
-
-        return true
-    }
-
-    private func applyInstantFrame(input: MTLTexture, output: MTLTexture,
-                                  config: InstantFrameConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let pipeline = RenderEngine.shared.instantFramePipeline else { return false }
-
-        renderPassDescriptor.colorAttachments[0].texture = output
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
@@ -228,7 +438,7 @@ class FilterRenderer {
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
-        return true
+        return output
     }
 
     private func blitToOutput(source: MTLTexture, destination: MTLTexture, commandBuffer: MTLCommandBuffer) {
@@ -239,7 +449,7 @@ class FilterRenderer {
         blitEncoder.endEncoding()
     }
 
-    // MARK: - ADAPTER LOGIC
+    // MARK: - Parameter Preparation
 
     private func prepareColorGradingParams(_ preset: FilterPreset) -> ColorGradingParams {
         var params = ColorGradingParams()
@@ -265,7 +475,6 @@ class FilterRenderer {
         params.splitBalance = split.balance
         params.midtoneProtection = split.midtoneProtection
         
-        // Selective Color Map
         params.selectiveColorCount = Int32(min(preset.selectiveColor.count, 8))
         for (i, selColor) in preset.selectiveColor.prefix(8).enumerated() {
             let colorData = SelectiveColorData(hue: selColor.hue, range: selColor.range, satAdj: selColor.sat, lumAdj: selColor.lum, hueShift: selColor.hueShift)

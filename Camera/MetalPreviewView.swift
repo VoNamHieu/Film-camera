@@ -1,5 +1,6 @@
 // MetalPreviewView.swift
-// Film Camera - Metal-based Camera Preview with Real-time Filtering
+// Film Camera - Metal-based Camera Preview with Real-time Filtering (FIXED VERSION)
+// Fix: Drawable presentation through FilterRenderer, proper synchronization
 
 import SwiftUI
 import MetalKit
@@ -18,6 +19,9 @@ struct MetalPreviewView: UIViewRepresentable {
         mtkView.preferredFramesPerSecond = 60
         mtkView.enableSetNeedsDisplay = false
         mtkView.isPaused = false
+        
+        // ★ Enable auto-resize for rotation handling
+        mtkView.autoResizeDrawable = true
 
         context.coordinator.setupVideoOutput(cameraManager: cameraManager)
 
@@ -40,6 +44,10 @@ struct MetalPreviewView: UIViewRepresentable {
         private var textureCache: CVMetalTextureCache?
         private let filterRenderer: FilterRenderer
         private var videoOutputAdded = false
+        
+        // Frame timing for debugging
+        private var lastFrameTime: CFAbsoluteTime = 0
+        private var frameCount: Int = 0
 
         init(preset: FilterPreset) {
             self.currentPreset = preset
@@ -50,26 +58,25 @@ struct MetalPreviewView: UIViewRepresentable {
         }
 
         func setupVideoOutput(cameraManager: CameraManager) {
-            // Check if video output already exists
             let existingOutputs = cameraManager.session.outputs.compactMap { $0 as? AVCaptureVideoDataOutput }
 
             if !existingOutputs.isEmpty {
-                // Use existing output
                 if let existingOutput = existingOutputs.first {
-                    existingOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output"))
+                    existingOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output", qos: .userInteractive))
                     videoOutputAdded = true
                 }
                 return
             }
 
-            // Create new video output
             let videoOutput = AVCaptureVideoDataOutput()
-            videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output"))
+            videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output", qos: .userInteractive))
             videoOutput.videoSettings = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
             ]
+            
+            // Drop late frames to maintain smooth preview
+            videoOutput.alwaysDiscardsLateVideoFrames = true
 
-            // Add to session
             cameraManager.session.beginConfiguration()
             if cameraManager.session.canAddOutput(videoOutput) {
                 cameraManager.session.addOutput(videoOutput)
@@ -84,11 +91,16 @@ struct MetalPreviewView: UIViewRepresentable {
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
             currentPixelBuffer = pixelBuffer
         }
+        
+        func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+            // Frame dropped - this is expected under heavy load
+        }
 
         // MARK: - MTKViewDelegate
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-            // Handle view size changes if needed
+            // Handle view size changes (rotation, etc.)
+            print("🎬 MetalPreviewView: Drawable size changed to \(size)")
         }
 
         func draw(in view: MTKView) {
@@ -121,16 +133,34 @@ struct MetalPreviewView: UIViewRepresentable {
                 return
             }
 
-            // Apply filters and render to drawable
-            filterRenderer.render(
+            // ★ FIX: Use renderToDrawable which handles presentation correctly
+            filterRenderer.renderToDrawable(
                 input: inputTexture,
-                output: drawable.texture,
+                drawable: drawable,
                 preset: currentPreset,
                 commandQueue: RenderEngine.shared.commandQueue
             )
-
-            // Present drawable
-            drawable.present()
+            
+            // ★ FIX: DO NOT call drawable.present() here!
+            // FilterRenderer.renderToDrawable() handles it via commandBuffer.present(drawable)
+            
+            // Debug: Track frame rate
+            #if DEBUG
+            trackFrameRate()
+            #endif
+        }
+        
+        private func trackFrameRate() {
+            frameCount += 1
+            let now = CFAbsoluteTimeGetCurrent()
+            if now - lastFrameTime >= 1.0 {
+                let fps = Double(frameCount) / (now - lastFrameTime)
+                if fps < 30 {
+                    print("⚠️ MetalPreviewView: Low FPS: \(Int(fps))")
+                }
+                frameCount = 0
+                lastFrameTime = now
+            }
         }
     }
 }

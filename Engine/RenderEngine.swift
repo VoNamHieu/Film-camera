@@ -1,5 +1,6 @@
 // RenderEngine.swift
-// Film Camera - Core Metal Rendering Engine
+// Film Camera - Core Metal Rendering Engine (FIXED VERSION)
+// Added: Separable bloom/halation pipelines, lens distortion, GPU sync
 
 import Foundation
 import Metal
@@ -14,13 +15,31 @@ class RenderEngine {
     let library: MTLLibrary
     let texturePool: TexturePool
     
-    // Pipeline states
+    // Core Pipeline States
     private(set) var colorGradingPipeline: MTLRenderPipelineState?
     private(set) var vignettePipeline: MTLRenderPipelineState?
     private(set) var grainPipeline: MTLRenderPipelineState?
+    private(set) var instantFramePipeline: MTLRenderPipelineState?
+    private(set) var lensDistortionPipeline: MTLRenderPipelineState?
+    
+    // ★ Legacy single-pass (for fallback)
     private(set) var bloomPipeline: MTLRenderPipelineState?
     private(set) var halationPipeline: MTLRenderPipelineState?
-    private(set) var instantFramePipeline: MTLRenderPipelineState?
+    
+    // ★ NEW: Separable Bloom Pipeline (4 passes)
+    private(set) var bloomThresholdPipeline: MTLRenderPipelineState?
+    private(set) var bloomHorizontalPipeline: MTLRenderPipelineState?
+    private(set) var bloomVerticalPipeline: MTLRenderPipelineState?
+    private(set) var bloomCompositePipeline: MTLRenderPipelineState?
+    
+    // ★ NEW: Separable Halation Pipeline (4 passes)
+    private(set) var halationThresholdPipeline: MTLRenderPipelineState?
+    private(set) var halationHorizontalPipeline: MTLRenderPipelineState?
+    private(set) var halationVerticalPipeline: MTLRenderPipelineState?
+    private(set) var halationCompositePipeline: MTLRenderPipelineState?
+    
+    // ★ NEW: Tone Mapping
+    private(set) var toneMappingPipeline: MTLRenderPipelineState?
     
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
@@ -58,69 +77,66 @@ class RenderEngine {
             print("✅ RenderEngine: Loaded vertexPassthrough")
         }
 
-        // Color Grading Pipeline
-        if let fragmentFunction = library.makeFunction(name: "colorGradingFragment") {
-            colorGradingPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(colorGradingPipeline != nil ? "✅ RenderEngine: colorGradingPipeline created" : "❌ RenderEngine: colorGradingPipeline FAILED")
-        } else {
-            print("❌ RenderEngine: Failed to load colorGradingFragment shader")
-        }
+        // Core Pipelines
+        colorGradingPipeline = createPipeline(vertex: vertexFunction, fragmentName: "colorGradingFragment")
+        vignettePipeline = createPipeline(vertex: vertexFunction, fragmentName: "vignetteFragment")
+        grainPipeline = createPipeline(vertex: vertexFunction, fragmentName: "grainFragment")
+        instantFramePipeline = createPipeline(vertex: vertexFunction, fragmentName: "instantFrameFragment")
+        lensDistortionPipeline = createPipeline(vertex: vertexFunction, fragmentName: "lensDistortionFragment")
+        
+        // Legacy single-pass (fallback)
+        bloomPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomFragment")
+        halationPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationFragment")
+        
+        // ★ Separable Bloom Pipeline
+        bloomThresholdPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomThresholdFragment")
+        bloomHorizontalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomHorizontalFragment")
+        bloomVerticalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomVerticalFragment")
+        bloomCompositePipeline = createPipelineWithTwoTextures(vertex: vertexFunction, fragmentName: "bloomCompositeFragment")
+        
+        // ★ Separable Halation Pipeline
+        halationThresholdPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationThresholdFragment")
+        halationHorizontalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationHorizontalFragment")
+        halationVerticalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationVerticalFragment")
+        halationCompositePipeline = createPipelineWithTwoTextures(vertex: vertexFunction, fragmentName: "halationCompositeFragment")
+        
+        // Tone Mapping
+        toneMappingPipeline = createPipeline(vertex: vertexFunction, fragmentName: "toneMappingFragment")
 
-        // Vignette Pipeline
-        if let fragmentFunction = library.makeFunction(name: "vignetteFragment") {
-            vignettePipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(vignettePipeline != nil ? "✅ RenderEngine: vignettePipeline created" : "❌ RenderEngine: vignettePipeline FAILED")
-        } else {
-            print("⚠️ RenderEngine: vignetteFragment shader not found")
-        }
-
-        // Grain Pipeline
-        if let fragmentFunction = library.makeFunction(name: "grainFragment") {
-            grainPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(grainPipeline != nil ? "✅ RenderEngine: grainPipeline created" : "❌ RenderEngine: grainPipeline FAILED")
-        } else {
-            print("⚠️ RenderEngine: grainFragment shader not found")
-        }
-
-        // Bloom Pipeline
-        if let fragmentFunction = library.makeFunction(name: "bloomFragment") {
-            bloomPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(bloomPipeline != nil ? "✅ RenderEngine: bloomPipeline created" : "❌ RenderEngine: bloomPipeline FAILED")
-        } else {
-            print("⚠️ RenderEngine: bloomFragment shader not found")
-        }
-
-        // Halation Pipeline
-        if let fragmentFunction = library.makeFunction(name: "halationFragment") {
-            halationPipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(halationPipeline != nil ? "✅ RenderEngine: halationPipeline created" : "❌ RenderEngine: halationPipeline FAILED")
-        } else {
-            print("⚠️ RenderEngine: halationFragment shader not found")
-        }
-
-        // Instant Frame Pipeline
-        if let fragmentFunction = library.makeFunction(name: "instantFrameFragment") {
-            instantFramePipeline = createPipeline(vertex: vertexFunction, fragment: fragmentFunction)
-            print(instantFramePipeline != nil ? "✅ RenderEngine: instantFramePipeline created" : "❌ RenderEngine: instantFramePipeline FAILED")
-        } else {
-            print("⚠️ RenderEngine: instantFrameFragment shader not found")
-        }
-
-        print("🎬 RenderEngine: Pipeline setup complete")
+        printPipelineStatus()
     }
     
-    private func createPipeline(vertex: MTLFunction?, fragment: MTLFunction?) -> MTLRenderPipelineState? {
+    private func createPipeline(vertex: MTLFunction?, fragmentName: String) -> MTLRenderPipelineState? {
+        guard let fragmentFunction = library.makeFunction(name: fragmentName) else {
+            print("⚠️ RenderEngine: \(fragmentName) shader not found")
+            return nil
+        }
+        
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = vertex
-        descriptor.fragmentFunction = fragment
+        descriptor.fragmentFunction = fragmentFunction
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         
         do {
-            return try device.makeRenderPipelineState(descriptor: descriptor)
+            let pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+            print("✅ RenderEngine: \(fragmentName) pipeline created")
+            return pipeline
         } catch {
-            print("Failed to create pipeline: \(error)")
+            print("❌ RenderEngine: Failed to create \(fragmentName) pipeline: \(error)")
             return nil
         }
+    }
+    
+    private func createPipelineWithTwoTextures(vertex: MTLFunction?, fragmentName: String) -> MTLRenderPipelineState? {
+        // Same as above - Metal handles multiple textures automatically
+        return createPipeline(vertex: vertex, fragmentName: fragmentName)
+    }
+    
+    private func printPipelineStatus() {
+        print("🎬 RenderEngine: Pipeline setup complete")
+        print("   Core: colorGrading=\(colorGradingPipeline != nil), vignette=\(vignettePipeline != nil), grain=\(grainPipeline != nil)")
+        print("   Separable Bloom: threshold=\(bloomThresholdPipeline != nil), h=\(bloomHorizontalPipeline != nil), v=\(bloomVerticalPipeline != nil), composite=\(bloomCompositePipeline != nil)")
+        print("   Separable Halation: threshold=\(halationThresholdPipeline != nil), h=\(halationHorizontalPipeline != nil), v=\(halationVerticalPipeline != nil), composite=\(halationCompositePipeline != nil)")
     }
     
     // MARK: - LUT Management
@@ -198,22 +214,25 @@ class RenderEngine {
             return nil
         }
 
-        // Create output texture
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm,
+        // ★ FIX: Use readable texture for CPU access
+        guard let outputTexture = texturePool.readableTexture(
             width: inputTexture.width,
             height: inputTexture.height,
-            mipmapped: false
-        )
-        descriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
-
-        guard let outputTexture = device.makeTexture(descriptor: descriptor) else {
+            pixelFormat: .bgra8Unorm
+        ) else {
             print("❌ RenderEngine: Failed to create output texture")
             return nil
         }
 
         // Apply filter using FilterRenderer
         let filterRenderer = FilterRenderer()
+        
+        // Create command buffer for synchronous execution
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            print("❌ RenderEngine: Failed to create command buffer")
+            return nil
+        }
+        
         filterRenderer.render(
             input: inputTexture,
             output: outputTexture,
@@ -221,17 +240,22 @@ class RenderEngine {
             commandQueue: commandQueue
         )
 
-        // Wait for GPU to finish
-        commandQueue.insertDebugCaptureBoundary()
+        // ★ FIX: Wait for GPU to finish before reading texture
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
 
         // Convert MTLTexture → CGImage → UIImage
         guard let filteredCGImage = textureToCGImage(texture: outputTexture) else {
             print("❌ RenderEngine: Failed to convert texture to CGImage")
+            texturePool.recycle(outputTexture)
             return nil
         }
 
         let filteredImage = UIImage(cgImage: filteredCGImage, scale: image.scale, orientation: image.imageOrientation)
         print("✅ RenderEngine: Filter applied successfully")
+        
+        // Recycle output texture
+        texturePool.recycle(outputTexture)
 
         return filteredImage
     }
@@ -257,6 +281,13 @@ class RenderEngine {
             from: region,
             mipmapLevel: 0
         )
+        
+        // BGRA → RGBA conversion (Metal uses BGRA, CGImage expects RGBA)
+        for i in stride(from: 0, to: pixelData.count, by: 4) {
+            let b = pixelData[i]
+            pixelData[i] = pixelData[i + 2]  // R
+            pixelData[i + 2] = b              // B
+        }
 
         guard let dataProvider = CGDataProvider(data: Data(pixelData) as CFData) else {
             return nil

@@ -1,5 +1,6 @@
 // TexturePool.swift
-// Film Camera - Metal Texture Memory Management
+// Film Camera - Metal Texture Memory Management (FIXED VERSION)
+// Fix: Storage mode for iOS (.shared instead of .private)
 
 import Foundation
 import Metal
@@ -65,7 +66,38 @@ class TexturePool {
             mipmapped: false
         )
         descriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
-        descriptor.storageMode = .private
+        
+        // ★ FIX: Use correct storage mode for platform
+        #if os(iOS) || os(tvOS)
+        // iOS uses unified memory - .shared allows CPU read/write
+        descriptor.storageMode = .shared
+        #elseif os(macOS)
+        // macOS with discrete GPU benefits from .private
+        // But for simplicity and compatibility, .shared works too
+        if device.hasUnifiedMemory {
+            descriptor.storageMode = .shared
+        } else {
+            descriptor.storageMode = .private
+        }
+        #else
+        descriptor.storageMode = .shared
+        #endif
+        
+        return texture(matching: descriptor)
+    }
+    
+    /// Create a texture optimized for CPU read (for photo capture)
+    func readableTexture(width: Int, height: Int, pixelFormat: MTLPixelFormat = .bgra8Unorm) -> MTLTexture? {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: pixelFormat,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
+        
+        // ★ Always use .shared for CPU-readable textures
+        descriptor.storageMode = .shared
         
         return texture(matching: descriptor)
     }
@@ -78,13 +110,22 @@ class TexturePool {
         availableTextures.removeAll()
     }
     
+    /// Get pool statistics for debugging
+    func statistics() -> (available: Int, inUse: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        let availableCount = availableTextures.values.reduce(0) { $0 + $1.count }
+        return (availableCount, inUseTextures.count)
+    }
+    
     // MARK: - Private
     
     private func textureKey(for descriptor: MTLTextureDescriptor) -> String {
-        return "\(descriptor.width)x\(descriptor.height)_\(descriptor.pixelFormat.rawValue)_\(descriptor.usage.rawValue)"
+        return "\(descriptor.width)x\(descriptor.height)_\(descriptor.pixelFormat.rawValue)_\(descriptor.usage.rawValue)_\(descriptor.storageMode.rawValue)"
     }
     
     private func textureKey(for texture: MTLTexture) -> String {
-        return "\(texture.width)x\(texture.height)_\(texture.pixelFormat.rawValue)_\(texture.usage.rawValue)"
+        return "\(texture.width)x\(texture.height)_\(texture.pixelFormat.rawValue)_\(texture.usage.rawValue)_\(texture.storageMode.rawValue)"
     }
 }
