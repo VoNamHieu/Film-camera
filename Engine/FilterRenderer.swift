@@ -5,8 +5,6 @@ import Foundation
 import Metal
 import MetalKit
 
-/// FilterRenderer: Adapter giữa complex Models.swift và simple Metal shaders
-/// Chịu trách nhiệm "làm phẳng" (flatten) struct phức tạp → shader params đơn giản
 class FilterRenderer {
 
     private let device: MTLDevice
@@ -24,24 +22,18 @@ class FilterRenderer {
 
     // MARK: - Main Rendering Pipeline
 
-    /// Main render function: Applies full filter pipeline
-    /// - Parameters:
-    ///   - input: Input texture from camera
-    ///   - output: Output texture (MTKView drawable)
-    ///   - preset: Filter preset with all parameters
-    ///   - commandQueue: Metal command queue
     func render(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             print("FilterRenderer: Failed to create command buffer")
             return
         }
 
-        // Get texture pool for intermediate textures
+        // Get texture pool
         let texturePool = RenderEngine.shared.texturePool
 
-        // Create intermediate textures for multi-pass rendering
-        guard let temp1 = texturePool.requestTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
-              let temp2 = texturePool.requestTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+        // FIXED: requestTexture -> renderTargetTexture
+        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
             print("FilterRenderer: Failed to allocate intermediate textures")
             return
         }
@@ -49,7 +41,7 @@ class FilterRenderer {
         var currentInput = input
         var currentOutput = temp1
 
-        // PASS 1: Lens Distortion (if enabled)
+        // PASS 1: Lens Distortion
         if preset.lensDistortion.enabled {
             if applyLensDistortion(input: currentInput, output: currentOutput,
                                   params: preset.lensDistortion, commandBuffer: commandBuffer) {
@@ -57,7 +49,7 @@ class FilterRenderer {
             }
         }
 
-        // PASS 2: Color Grading (Core Engine)
+        // PASS 2: Color Grading
         if applyColorGrading(input: currentInput, output: currentOutput,
                            preset: preset, commandBuffer: commandBuffer) {
             swap(&currentInput, &currentOutput)
@@ -103,23 +95,21 @@ class FilterRenderer {
             }
         }
 
-        // FINAL PASS: Blit to output (drawable)
+        // FINAL PASS
         blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
 
-        // Commit
         commandBuffer.commit()
 
-        // Return textures to pool
-        texturePool.returnTexture(temp1)
-        texturePool.returnTexture(temp2)
+        // FIXED: returnTexture -> recycle
+        texturePool.recycle(temp1)
+        texturePool.recycle(temp2)
     }
 
     // MARK: - Individual Filter Passes
 
     private func applyLensDistortion(input: MTLTexture, output: MTLTexture,
                                      params: LensDistortionConfig, commandBuffer: MTLCommandBuffer) -> Bool {
-        // TODO: Get lensDistortionPipeline from RenderEngine when available
-        // For now, passthrough (return false = skip this pass)
+        // Placeholder implementation
         return false
     }
 
@@ -128,26 +118,18 @@ class FilterRenderer {
         guard let pipeline = RenderEngine.shared.colorGradingPipeline else { return false }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else {
-            return false
-        }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        // Prepare ColorGradingParams from FilterPreset (ADAPTER LOGIC)
         var params = prepareColorGradingParams(preset)
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
 
-        // Load LUT if available
-        if let lutFile = preset.lutFile {
-            if let lutTexture = RenderEngine.shared.loadLUT(named: lutFile) {
-                renderEncoder.setFragmentTexture(lutTexture, index: 1)
-            }
+        if let lutFile = preset.lutFile, let lutTexture = RenderEngine.shared.loadLUT(named: lutFile) {
+            renderEncoder.setFragmentTexture(lutTexture, index: 1)
         }
 
-        // Draw fullscreen quad
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
@@ -159,15 +141,11 @@ class FilterRenderer {
         guard let pipeline = RenderEngine.shared.grainPipeline else { return false }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else {
-            return false
-        }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        // Prepare GrainParams (ADAPTER LOGIC)
         var params = prepareGrainParams(config)
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<GrainParams>.stride, index: 0)
 
@@ -258,10 +236,7 @@ class FilterRenderer {
         guard let pipeline = RenderEngine.shared.vignettePipeline else { return false }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else {
-            return false
-        }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
@@ -356,10 +331,7 @@ class FilterRenderer {
         guard let pipeline = RenderEngine.shared.instantFramePipeline else { return false }
 
         renderPassDescriptor.colorAttachments[0].texture = output
-
-        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else {
-            return false
-        }
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return false }
 
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
@@ -375,32 +347,16 @@ class FilterRenderer {
 
     private func blitToOutput(source: MTLTexture, destination: MTLTexture, commandBuffer: MTLCommandBuffer) {
         guard let blitEncoder = commandBuffer.makeBlitCommandEncoder() else { return }
-
         let width = min(source.width, destination.width)
         let height = min(source.height, destination.height)
-
-        blitEncoder.copy(
-            from: source,
-            sourceSlice: 0,
-            sourceLevel: 0,
-            sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
-            sourceSize: MTLSize(width: width, height: height, depth: 1),
-            to: destination,
-            destinationSlice: 0,
-            destinationLevel: 0,
-            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
-        )
-
+        blitEncoder.copy(from: source, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0), sourceSize: MTLSize(width: width, height: height, depth: 1), to: destination, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
         blitEncoder.endEncoding()
     }
 
-    // MARK: - ADAPTER LOGIC: Complex Models → Simple Shader Params
-    // Đây là "linh hồn" của architecture pattern
+    // MARK: - ADAPTER LOGIC
 
     private func prepareColorGradingParams(_ preset: FilterPreset) -> ColorGradingParams {
         var params = ColorGradingParams()
-
-        // Basic adjustments
         let adj = preset.colorAdjustments
         params.exposure = adj.exposure
         params.contrast = adj.contrast
@@ -414,8 +370,7 @@ class FilterRenderer {
         params.tint = adj.tint
         params.fade = adj.fade
         params.clarity = adj.clarity
-
-        // Split Tone
+        
         let split = preset.splitTone
         params.shadowsHue = split.shadowsHue
         params.shadowsSat = split.shadowsSat
@@ -423,127 +378,77 @@ class FilterRenderer {
         params.highlightsSat = split.highlightsSat
         params.splitBalance = split.balance
         params.midtoneProtection = split.midtoneProtection
-
-        // Selective Color (Array mapping - CRITICAL ADAPTER LOGIC)
+        
+        // Selective Color Map
         params.selectiveColorCount = Int32(min(preset.selectiveColor.count, 8))
         for (i, selColor) in preset.selectiveColor.prefix(8).enumerated() {
-            let colorData = SelectiveColorData(
-                hue: selColor.hue,
-                range: selColor.range,
-                satAdj: selColor.sat,        // Map sat → satAdj
-                lumAdj: selColor.lum,        // Map lum → lumAdj
-                hueShift: selColor.hueShift
-            )
+            let colorData = SelectiveColorData(hue: selColor.hue, range: selColor.range, satAdj: selColor.sat, lumAdj: selColor.lum, hueShift: selColor.hueShift)
             params.setSelectiveColor(at: i, value: colorData)
         }
-
-        // LUT
+        
         params.lutIntensity = preset.lutIntensity
         params.useLUT = preset.lutFile != nil ? 1 : 0
-
         return params
     }
 
     private func prepareGrainParams(_ config: GrainConfig) -> GrainParams {
         var params = GrainParams()
-
         params.globalIntensity = config.globalIntensity
-        params.size = config.channels.red.size // Use red channel as base
+        params.size = config.channels.red.size
         params.softness = config.channels.red.softness
         params.enabled = config.enabled ? 1 : 0
-
-        // Channel intensities
-        params.channelIntensity = SIMD3<Float>(
-            config.channels.red.intensity,
-            config.channels.green.intensity,
-            config.channels.blue.intensity
-        )
-
-        // ADVANCED FEATURES → Modulate base params (Adapter magic!)
+        params.channelIntensity = SIMD3<Float>(config.channels.red.intensity, config.channels.green.intensity, config.channels.blue.intensity)
         if config.clumping.enabled {
-            // Clumping = increase grain size + reduce intensity
             params.size *= (1.0 + config.clumping.clusterSize * 0.3)
             params.globalIntensity *= (1.0 - config.clumping.strength * 0.2)
         }
-
-        // TODO: Temporal grain (animate seed based on frame counter)
-        // if config.temporal.enabled {
-        //     params.seed = currentFrame * config.temporal.seedIncrement
-        // }
-
         return params
     }
 
     private func prepareBloomParams(_ config: BloomConfig) -> BloomParams {
         var params = BloomParams()
-
         params.intensity = config.intensity
         params.threshold = config.threshold
         params.radius = config.radius
         params.softness = config.softness
         params.colorTint = SIMD3<Float>(config.colorTint.r, config.colorTint.g, config.colorTint.b)
         params.enabled = config.enabled ? 1 : 0
-
         return params
     }
 
     private func prepareVignetteParams(_ config: VignetteConfig) -> VignetteParams {
         var params = VignetteParams()
-
         params.intensity = config.intensity
         params.roundness = config.roundness
         params.feather = config.feather
         params.midpoint = config.midpoint
         params.enabled = config.enabled ? 1 : 0
-
         return params
     }
 
     private func prepareHalationParams(_ config: HalationConfig) -> HalationParams {
         var params = HalationParams()
-
         params.intensity = config.intensity
         params.threshold = config.threshold
         params.radius = config.radius
         params.softness = config.softness
         params.color = SIMD3<Float>(config.color.r, config.color.g, config.color.b)
         params.enabled = config.enabled ? 1 : 0
-
-        // TODO: Handle gradient if enabled
-        // if config.colorGradient.enabled {
-        //     // Blend inner/outer colors based on distance
-        // }
-
         return params
     }
 
     private func prepareInstantFrameParams(_ config: InstantFrameConfig) -> InstantFrameParams {
         var params = InstantFrameParams()
-
-        params.borderWidths = SIMD4<Float>(
-            config.borderWidth.top,
-            config.borderWidth.left,
-            config.borderWidth.right,
-            config.borderWidth.bottom
-        )
-        params.borderColor = SIMD3<Float>(
-            config.borderColor.r,
-            config.borderColor.g,
-            config.borderColor.b
-        )
-        params.edgeFade = 0.05 // TODO: Get from ChemicalFade config
+        params.borderWidths = SIMD4<Float>(config.borderWidth.top, config.borderWidth.left, config.borderWidth.right, config.borderWidth.bottom)
+        params.borderColor = SIMD3<Float>(config.borderColor.r, config.borderColor.g, config.borderColor.b)
+        params.edgeFade = 0.05
         params.cornerDarkening = 0.08
         params.enabled = config.enabled ? 1 : 0
-
         return params
     }
 }
 
-// MARK: - ColorGradingParams Extension (Helper for array access)
-
 extension ColorGradingParams {
-    /// Helper to access selectiveColors tuple array by index
-    /// Metal C structs don't support Swift arrays, so we use tuple + helper
     mutating func setSelectiveColor(at index: Int, value: SelectiveColorData) {
         switch index {
         case 0: selectiveColors.0 = value
