@@ -287,11 +287,11 @@ struct ContentView: View {
             isCapturing = true
         }
         
-        cameraManager.capturePhoto { image in
+        cameraManager.capturePhoto(preset: selectedPreset) { image in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isCapturing = false
             }
-            
+
             if let image = image {
                 saveToPhotoLibrary(image)
             }

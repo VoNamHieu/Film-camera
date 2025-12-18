@@ -260,34 +260,34 @@ final class CameraManager: NSObject, ObservableObject {
     
     // MARK: - Photo Capture
     
-    func capturePhoto(completion: @escaping (UIImage?) -> Void) {
+    func capturePhoto(preset: FilterPreset? = nil, completion: @escaping (UIImage?) -> Void) {
         sessionQueue.async { [weak self] in
             guard let self = self else {
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
-            
+
             // Configure settings
             var settings = AVCapturePhotoSettings()
-            
+
             // Use HEVC if available
             if self.photoOutput.availablePhotoCodecTypes.contains(.hevc) {
                 settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
             }
-            
+
             // Flash
             if self.videoDeviceInput?.device.isFlashAvailable == true {
                 settings.flashMode = self.flashMode
             }
-            
+
             // Quality
             settings.isHighResolutionPhotoEnabled = true
             settings.photoQualityPrioritization = .quality
-            
-            // Create processor
-            let processor = PhotoCaptureProcessor(completion: completion)
+
+            // Create processor with preset for filtering
+            let processor = PhotoCaptureProcessor(preset: preset, completion: completion)
             self.inProgressPhotoCaptures[settings.uniqueID] = processor
-            
+
             self.photoOutput.capturePhoto(with: settings, delegate: processor)
         }
     }
@@ -342,13 +342,15 @@ final class CameraManager: NSObject, ObservableObject {
 // MARK: - Photo Capture Processor
 
 private class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
+    private let preset: FilterPreset?
     private let completion: (UIImage?) -> Void
-    
-    init(completion: @escaping (UIImage?) -> Void) {
+
+    init(preset: FilterPreset? = nil, completion: @escaping (UIImage?) -> Void) {
+        self.preset = preset
         self.completion = completion
         super.init()
     }
-    
+
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
             print("Error capturing photo: \(error.localizedDescription)")
@@ -357,7 +359,7 @@ private class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
             }
             return
         }
-        
+
         guard let imageData = photo.fileDataRepresentation(),
               let image = UIImage(data: imageData) else {
             DispatchQueue.main.async {
@@ -365,9 +367,18 @@ private class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
             }
             return
         }
-        
+
+        // Apply filter if preset is provided
+        let finalImage: UIImage?
+        if let preset = preset {
+            print("📸 PhotoCaptureProcessor: Applying filter '\(preset.label)' to captured photo...")
+            finalImage = RenderEngine.shared.applyFilter(to: image, preset: preset)
+        } else {
+            finalImage = image
+        }
+
         DispatchQueue.main.async {
-            self.completion(image)
+            self.completion(finalImage)
         }
     }
 }
