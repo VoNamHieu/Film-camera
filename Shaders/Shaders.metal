@@ -4,6 +4,28 @@ using namespace metal;
 #include "ShaderTypes.h"
 
 // ═══════════════════════════════════════════════════════════════
+// LINEAR COLOR SPACE UTILITIES
+// ═══════════════════════════════════════════════════════════════
+
+// sRGB → Linear (Gamma decode)
+float srgbToLinear(float c) {
+    return (c <= 0.04045) ? (c / 12.92) : pow((c + 0.055) / 1.055, 2.4);
+}
+
+float3 srgbToLinear3(float3 c) {
+    return float3(srgbToLinear(c.r), srgbToLinear(c.g), srgbToLinear(c.b));
+}
+
+// Linear → sRGB (Gamma encode)
+float linearToSrgb(float c) {
+    return (c <= 0.0031308) ? (c * 12.92) : (1.055 * pow(c, 1.0/2.4) - 0.055);
+}
+
+float3 linearToSrgb3(float3 c) {
+    return float3(linearToSrgb(c.r), linearToSrgb(c.g), linearToSrgb(c.b));
+}
+
+// ═══════════════════════════════════════════════════════════════
 // COMMON VERTEX SHADER
 // ═══════════════════════════════════════════════════════════════
 
@@ -27,14 +49,13 @@ vertex VertexOut vertexPassthrough(uint vertexID [[vertex_id]]) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS (Core Math ported from WebGL)
+// UTILITY FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
 float luminance(float3 color) {
     return dot(color, float3(0.2126, 0.7152, 0.0722));
 }
 
-// Chuyển đổi RGB sang HSL (Logic từ index.html)
 float3 rgb2hsl(float3 c) {
     float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
     float4 p = mix(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
@@ -45,7 +66,6 @@ float3 rgb2hsl(float3 c) {
     return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
 }
 
-// Chuyển đổi HSL sang RGB
 float3 hsl2rgb(float3 c) {
     float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
     float3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
@@ -57,12 +77,11 @@ float3 hueToRGB(float hue) {
     return saturate(rgb);
 }
 
-// Noise function
+// Perlin-like noise
 float random(float2 st, uint seed) {
     return fract(sin(dot(st + float2(seed), float2(12.9898, 78.233))) * 43758.5453);
 }
 
-// Simplex-like noise
 float noise2D(float2 st, uint seed) {
     float2 i = floor(st);
     float2 f = fract(st);
@@ -72,6 +91,11 @@ float noise2D(float2 st, uint seed) {
     float d = random(i + float2(1.0, 1.0), seed);
     float2 u = f * f * (3.0 - 2.0 * f);
     return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
+// Gaussian weight
+float gaussianWeight(float x, float sigma) {
+    return exp(-(x * x) / (2.0 * sigma * sigma));
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -90,13 +114,10 @@ fragment float4 lensDistortionFragment(VertexOut in [[stage_in]],
     float2 uv = in.texCoord;
     float2 center = float2(0.5, 0.5);
     float2 dc = uv - center;
-    float r2 = dot(dc, dc); // Bán kính bình phương
+    float r2 = dot(dc, dc);
 
-    // Công thức biến dạng quang học: r_new = r * (1 + k1*r^2 + k2*r^4)
     float distortion = 1.0 + p.k1 * r2 + p.k2 * r2 * r2;
 
-    // Tính UV mới cho từng kênh màu (Chromatic Aberration)
-    // Kênh Đỏ méo ít hơn Kênh Xanh Dương
     float2 uvR = center + dc * distortion * (1.0 - p.caStrength) * p.scale;
     float2 uvG = center + dc * distortion * p.scale;
     float2 uvB = center + dc * distortion * (1.0 + p.caStrength) * p.scale;
@@ -109,7 +130,7 @@ fragment float4 lensDistortionFragment(VertexOut in [[stage_in]],
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 2. COLOR GRADING SHADER (The Core Engine)
+// 2. COLOR GRADING SHADER (Core Engine)
 // ═══════════════════════════════════════════════════════════════
 
 fragment float4 colorGradingFragment(
@@ -122,16 +143,14 @@ fragment float4 colorGradingFragment(
     constexpr sampler lutSampler(filter::linear, address::clamp_to_edge);
 
     float4 color = inputTexture.sample(s, in.texCoord);
-    float3 rgb = color.rgb;
+    
+    // ★ Convert to LINEAR space for accurate processing
+    float3 rgb = srgbToLinear3(color.rgb);
 
     // === 1. BASIC CORRECTIONS ===
-    // Exposure
     rgb *= pow(2.0, p.exposure);
-
-    // Contrast
     rgb = (rgb - 0.5) * (1.0 + p.contrast) + 0.5;
 
-    // Highlights / Shadows
     float luma = luminance(rgb);
     float shadowMask = 1.0 - smoothstep(0.0, 0.5, luma);
     float highlightMask = smoothstep(0.5, 1.0, luma);
@@ -141,32 +160,35 @@ fragment float4 colorGradingFragment(
     rgb += p.whites * smoothstep(0.8, 1.0, luma) * 0.15;
     rgb += p.blacks * (1.0 - smoothstep(0.0, 0.2, luma)) * 0.15;
 
-    // Temperature & Tint
     rgb.r += p.temperature * 0.1;
     rgb.b -= p.temperature * 0.1;
     rgb.g += p.tint * 0.05;
 
-    // === 2. SELECTIVE COLOR (Ported from WebGL) ===
-    // "Linh hồn" của các preset như Portra hay Gold
+    // === 2. SELECTIVE COLOR (Fixed hue normalization) ===
     if (p.selectiveColorCount > 0) {
         float3 hsl = rgb2hsl(rgb);
 
         for (int i = 0; i < p.selectiveColorCount; i++) {
             SelectiveColorData adj = p.selectiveColors[i];
 
-            // Tính khoảng cách màu (xử lý hue wrap-around)
-            float dist = abs(hsl.x - adj.hue);
+            // ★ FIX: Normalize hue to 0-1 (adj.hue might be 0-360)
+            float targetHue = adj.hue;
+            if (targetHue > 1.0) targetHue /= 360.0;
+            
+            float dist = abs(hsl.x - targetHue);
             if (dist > 0.5) dist = 1.0 - dist;
 
-            // Tính mask ảnh hưởng
-            float mask = 1.0 - smoothstep(0.0, adj.range, dist);
+            // ★ FIX: Normalize range as well
+            float rangeNorm = adj.range;
+            if (rangeNorm > 1.0) rangeNorm /= 360.0;
+            
+            float mask = 1.0 - smoothstep(0.0, rangeNorm, dist);
 
             if (mask > 0.0) {
-                // Shift Hue
                 hsl.x += adj.hueShift * mask;
-                // Adjust Saturation
+                if (hsl.x > 1.0) hsl.x -= 1.0;
+                if (hsl.x < 0.0) hsl.x += 1.0;
                 hsl.y = clamp(hsl.y * (1.0 + adj.satAdj * mask), 0.0, 1.0);
-                // Adjust Luminance
                 hsl.z = clamp(hsl.z * (1.0 + adj.lumAdj * mask * 0.5), 0.0, 1.0);
             }
         }
@@ -174,10 +196,9 @@ fragment float4 colorGradingFragment(
     }
 
     // === 3. SATURATION & VIBRANCE ===
-    luma = luminance(rgb); // Recalculate luma
+    luma = luminance(rgb);
     rgb = mix(float3(luma), rgb, 1.0 + p.saturation);
 
-    // Vibrance
     float maxChannel = max(max(rgb.r, rgb.g), rgb.b);
     float minChannel = min(min(rgb.r, rgb.g), rgb.b);
     float colorfulness = maxChannel - minChannel;
@@ -197,13 +218,11 @@ fragment float4 colorGradingFragment(
         rgb += (luma - 0.5) * p.clarity * 0.5;
     }
 
-    // === 6. SPLIT TONING (Advanced) ===
+    // === 6. SPLIT TONING ===
     if (p.shadowsSat > 0 || p.highlightsSat > 0) {
-        // Chuyển input hue (độ) sang RGB tint
         float3 shadowTint = hueToRGB(p.shadowsHue / 360.0);
         float3 highlightTint = hueToRGB(p.highlightsHue / 360.0);
 
-        // Midtone protection
         float midtoneMask = 1.0 - abs(luma - 0.5) * 2.0;
         float sStr = shadowMask * (1.0 - midtoneMask * p.midtoneProtection);
         float hStr = highlightMask * (1.0 - midtoneMask * p.midtoneProtection);
@@ -212,12 +231,14 @@ fragment float4 colorGradingFragment(
         rgb = mix(rgb, rgb * highlightTint, hStr * p.highlightsSat * 0.3);
     }
 
-    return saturate(float4(rgb, color.a));
+    // ★ Convert back to sRGB
+    rgb = linearToSrgb3(saturate(rgb));
+    
+    return float4(rgb, color.a);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 3. GRAIN, BLOOM, HALATION, VIGNETTE
-// (Giữ nguyên hoặc tinh chỉnh nhẹ từ code cũ để khớp pipeline)
+// 3. GRAIN SHADER (Enhanced)
 // ═══════════════════════════════════════════════════════════════
 
 fragment float4 grainFragment(
@@ -230,8 +251,11 @@ fragment float4 grainFragment(
 
     if (p.enabled == 0) return color;
 
+    // Convert to linear for processing
+    float3 rgb = srgbToLinear3(color.rgb);
+    
     float2 texSize = float2(inputTexture.get_width(), inputTexture.get_height());
-    float2 grainCoord = in.texCoord * texSize / (p.size * 2.0); // Scale grain size
+    float2 grainCoord = in.texCoord * texSize / (p.size * 2.0);
 
     // Generate noise per channel
     float3 noise;
@@ -240,40 +264,129 @@ fragment float4 grainFragment(
     noise.b = noise2D(grainCoord, 300);
     noise = (noise - 0.5) * 2.0;
 
-    // Density Curve: Grain xuất hiện nhiều ở vùng Midtones, ít ở Black/White
-    float luma = luminance(color.rgb);
-    float density = 1.0 - smoothstep(0.0, 1.0, abs(luma - 0.5) * 2.5); // Bell curve
+    // Density Curve: grain peaks at midtones
+    float luma = luminance(rgb);
+    float density = 1.0 - smoothstep(0.0, 1.0, abs(luma - 0.5) * 2.5);
 
-    color.rgb += noise * p.channelIntensity * p.globalIntensity * density;
+    // Apply grain in linear space
+    rgb += noise * p.channelIntensity * p.globalIntensity * density * 0.1;
 
-    return saturate(color);
+    // Convert back to sRGB
+    rgb = linearToSrgb3(saturate(rgb));
+    
+    return float4(rgb, color.a);
 }
 
-// Bloom, Vignette, Halation, InstantFrame giữ nguyên logic cũ
-// nhưng đảm bảo tham số khớp với struct mới trong ShaderTypes.h
+// ═══════════════════════════════════════════════════════════════
+// 4. SEPARABLE BLOOM PIPELINE (4 passes)
+// ═══════════════════════════════════════════════════════════════
 
-fragment float4 vignetteFragment(
+// Pass 1: Threshold extraction
+fragment float4 bloomThresholdFragment(
     VertexOut in [[stage_in]],
     texture2d<float> inputTexture [[texture(0)]],
-    constant VignetteParams &p [[buffer(0)]]
+    constant BloomParams &p [[buffer(0)]]
 ) {
-    constexpr sampler s(filter::linear);
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
     float4 color = inputTexture.sample(s, in.texCoord);
-
-    if (p.enabled == 0) return color;
-
-    float2 uv = in.texCoord - 0.5;
-    // Chỉnh aspect ratio cho vignette tròn
-    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
-    uv.x *= mix(1.0, aspect, p.roundness);
-
-    float dist = length(uv);
-    float v = 1.0 - smoothstep(p.midpoint - p.feather, p.midpoint + p.feather, dist);
-
-    color.rgb *= mix(1.0, v, p.intensity);
-    return color;
+    
+    if (p.enabled == 0) return float4(0.0);
+    
+    float3 rgb = srgbToLinear3(color.rgb);
+    float luma = luminance(rgb);
+    
+    // Soft threshold extraction
+    float softThreshold = p.threshold * 0.7;
+    if (luma > softThreshold) {
+        float t = max(0.0, (luma - softThreshold) / (1.0 - softThreshold));
+        float bloomStrength = pow(t, 1.5);
+        
+        float3 bloom = rgb * bloomStrength * p.colorTint;
+        return float4(bloom, 1.0);
+    }
+    
+    return float4(0.0, 0.0, 0.0, 1.0);
 }
 
+// Pass 2: Horizontal Gaussian blur - O(n)
+fragment float4 bloomHorizontalFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant BloomParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    
+    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+    int radius = int(p.radius);
+    float sigma = p.radius / 3.0;
+    
+    float3 result = float3(0.0);
+    float totalWeight = 0.0;
+    
+    // ★ SEPARABLE: Only horizontal - O(n) instead of O(n²)
+    for (int x = -radius; x <= radius; x++) {
+        float2 offset = float2(float(x) * texelSize.x, 0.0);
+        float weight = gaussianWeight(float(x), sigma);
+        
+        result += inputTexture.sample(s, in.texCoord + offset).rgb * weight;
+        totalWeight += weight;
+    }
+    
+    return float4(result / totalWeight, 1.0);
+}
+
+// Pass 3: Vertical Gaussian blur - O(n)
+fragment float4 bloomVerticalFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant BloomParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    
+    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+    int radius = int(p.radius);
+    float sigma = p.radius / 3.0;
+    
+    float3 result = float3(0.0);
+    float totalWeight = 0.0;
+    
+    // ★ SEPARABLE: Only vertical - O(n) instead of O(n²)
+    for (int y = -radius; y <= radius; y++) {
+        float2 offset = float2(0.0, float(y) * texelSize.y);
+        float weight = gaussianWeight(float(y), sigma);
+        
+        result += inputTexture.sample(s, in.texCoord + offset).rgb * weight;
+        totalWeight += weight;
+    }
+    
+    return float4(result / totalWeight, 1.0);
+}
+
+// Pass 4: Composite bloom with original
+fragment float4 bloomCompositeFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> originalTexture [[texture(0)]],
+    texture2d<float> bloomTexture [[texture(1)]],
+    constant BloomParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    
+    float4 original = originalTexture.sample(s, in.texCoord);
+    float3 bloom = bloomTexture.sample(s, in.texCoord).rgb;
+    
+    // Convert to linear for additive blend
+    float3 rgb = srgbToLinear3(original.rgb);
+    
+    // ★ Additive blend in linear space (physically correct)
+    rgb = rgb + bloom * p.intensity * p.softness;
+    
+    // Convert back to sRGB
+    rgb = linearToSrgb3(saturate(rgb));
+    
+    return float4(rgb, original.a);
+}
+
+// Legacy single-pass bloom (for backwards compatibility, but slow)
 fragment float4 bloomFragment(
     VertexOut in [[stage_in]],
     texture2d<float> inputTexture [[texture(0)]],
@@ -284,13 +397,13 @@ fragment float4 bloomFragment(
 
     if (p.enabled == 0) return color;
 
+    // ⚠️ Legacy nested loop - use separable pipeline instead!
     float3 bloom = float3(0.0);
     float totalWeight = 0.0;
     int radius = int(p.radius);
     float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
 
-    // Gaussian Blur đơn giản (để tối ưu performance nên dùng tách pass X/Y, nhưng đây là MVP)
-    for (int x = -radius; x <= radius; x+=2) { // Step 2 để tối ưu
+    for (int x = -radius; x <= radius; x+=2) {
         for (int y = -radius; y <= radius; y+=2) {
             float2 offset = float2(x, y) * texelSize;
             float3 sample = inputTexture.sample(s, in.texCoord + offset).rgb;
@@ -312,6 +425,117 @@ fragment float4 bloomFragment(
     return saturate(color);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 5. SEPARABLE HALATION PIPELINE (4 passes)
+// ═══════════════════════════════════════════════════════════════
+
+// Pass 1: Extract bright spots and apply red-orange tint
+fragment float4 halationThresholdFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant HalationParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+    
+    if (p.enabled == 0) return float4(0.0);
+    
+    float3 rgb = srgbToLinear3(color.rgb);
+    float luma = luminance(rgb);
+    
+    if (luma > p.threshold) {
+        // Calculate excess brightness
+        float excess = (luma - p.threshold) / (1.0 - p.threshold);
+        excess = pow(excess, 1.5);  // Sharper falloff
+        
+        // ★ Apply halation color tint (red-orange for Cinestill)
+        float3 halation = rgb * excess * p.color;
+        return float4(halation, 1.0);
+    }
+    
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+
+// Pass 2: Horizontal blur for halation
+fragment float4 halationHorizontalFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant HalationParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    
+    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+    int radius = int(p.radius);
+    float sigma = p.radius / 2.5;  // Wider spread for halation
+    
+    float3 result = float3(0.0);
+    float totalWeight = 0.0;
+    
+    for (int x = -radius; x <= radius; x++) {
+        float2 offset = float2(float(x) * texelSize.x, 0.0);
+        float weight = gaussianWeight(float(x), sigma);
+        
+        result += inputTexture.sample(s, in.texCoord + offset).rgb * weight;
+        totalWeight += weight;
+    }
+    
+    return float4(result / totalWeight, 1.0);
+}
+
+// Pass 3: Vertical blur for halation
+fragment float4 halationVerticalFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant HalationParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    
+    float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
+    int radius = int(p.radius);
+    float sigma = p.radius / 2.5;
+    
+    float3 result = float3(0.0);
+    float totalWeight = 0.0;
+    
+    for (int y = -radius; y <= radius; y++) {
+        float2 offset = float2(0.0, float(y) * texelSize.y);
+        float weight = gaussianWeight(float(y), sigma);
+        
+        result += inputTexture.sample(s, in.texCoord + offset).rgb * weight;
+        totalWeight += weight;
+    }
+    
+    // Apply softness (gamma)
+    result = pow(result / totalWeight, float3(p.softness));
+    
+    return float4(result, 1.0);
+}
+
+// Pass 4: Composite halation with original (ADDITIVE blend)
+fragment float4 halationCompositeFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> originalTexture [[texture(0)]],
+    texture2d<float> halationTexture [[texture(1)]],
+    constant HalationParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    
+    float4 original = originalTexture.sample(s, in.texCoord);
+    float3 halation = halationTexture.sample(s, in.texCoord).rgb;
+    
+    // Convert to linear for physically correct additive blend
+    float3 rgb = srgbToLinear3(original.rgb);
+    
+    // ★ ADDITIVE blend (physically correct light addition)
+    rgb = min(float3(1.0), rgb + halation * p.intensity);
+    
+    // Convert back to sRGB
+    rgb = linearToSrgb3(rgb);
+    
+    return float4(rgb, original.a);
+}
+
+// Legacy single-pass halation (slow, for backwards compatibility)
 fragment float4 halationFragment(
     VertexOut in [[stage_in]],
     texture2d<float> inputTexture [[texture(0)]],
@@ -322,7 +546,7 @@ fragment float4 halationFragment(
 
     if (p.enabled == 0) return color;
 
-    // Halation logic (Red Glow)
+    // ⚠️ Legacy nested loop - use separable pipeline instead!
     float3 halo = float3(0.0);
     float totalWeight = 0.0;
     int radius = int(p.radius);
@@ -332,7 +556,7 @@ fragment float4 halationFragment(
         for (int y = -radius; y <= radius; y+=3) {
             float2 offset = float2(x, y) * texelSize;
             float3 sample = inputTexture.sample(s, in.texCoord + offset).rgb;
-            float bLuma = sample.r; // Red channel is mostly responsible for halation
+            float bLuma = luminance(sample);
 
             if (bLuma > p.threshold) {
                 float weight = exp(-(float(x*x + y*y)) / (2.0 * (p.radius/2.5) * (p.radius/2.5)));
@@ -344,11 +568,57 @@ fragment float4 halationFragment(
 
     if (totalWeight > 0.0) {
         halo /= totalWeight;
-        color.rgb += halo * p.color * p.intensity * p.softness;
+        // ★ FIX: Additive blend in linear space
+        float3 rgb = srgbToLinear3(color.rgb);
+        float3 haloLinear = halo * p.color * p.intensity * p.softness;
+        rgb = min(float3(1.0), rgb + haloLinear);
+        color.rgb = linearToSrgb3(rgb);
     }
 
     return saturate(color);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 6. VIGNETTE SHADER (Fixed aspect ratio)
+// ═══════════════════════════════════════════════════════════════
+
+fragment float4 vignetteFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant VignetteParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    float2 uv = in.texCoord - 0.5;
+    
+    // ★ FIX: Correct aspect ratio handling for circular vignette
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+    if (aspect > 1.0) {
+        uv.x *= aspect;  // Landscape: stretch X
+    } else {
+        uv.y /= aspect;  // Portrait: stretch Y
+    }
+    
+    // Apply roundness (1.0 = circle, 0.5 = oval)
+    uv.x *= mix(1.0, 1.0, p.roundness);
+
+    float dist = length(uv);
+    float v = 1.0 - smoothstep(p.midpoint - p.feather, p.midpoint + p.feather, dist);
+
+    // Apply in linear space
+    float3 rgb = srgbToLinear3(color.rgb);
+    rgb *= mix(1.0, v, p.intensity);
+    rgb = linearToSrgb3(rgb);
+    
+    return float4(rgb, color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. INSTANT FRAME SHADER
+// ═══════════════════════════════════════════════════════════════
 
 fragment float4 instantFrameFragment(
     VertexOut in [[stage_in]],
@@ -365,7 +635,6 @@ fragment float4 instantFrameFragment(
     float right = 1.0 - p.borderWidths.z;
     float bottom = 1.0 - p.borderWidths.w;
 
-    // Check if inside photo area
     if (uv.x > left && uv.x < right && uv.y > top && uv.y < bottom) {
         float2 photoUV = float2(
             (uv.x - left) / (right - left),
@@ -388,4 +657,40 @@ fragment float4 instantFrameFragment(
     } else {
         return float4(p.borderColor, 1.0);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. TONE MAPPING SHADER (Filmic)
+// ═══════════════════════════════════════════════════════════════
+
+// Filmic tone mapping curve (Uncharted 2 style)
+float3 filmicToneMap(float3 x, float A, float B, float C, float D, float E, float F) {
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+
+fragment float4 toneMappingFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant float4 &params [[buffer(0)]]  // x=whitePoint, y=shoulder, z=linear, w=toe
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+    
+    float3 rgb = srgbToLinear3(color.rgb);
+    
+    // Filmic parameters
+    float A = params.y;  // shoulderStrength
+    float B = params.z;  // linearStrength
+    float C = 0.10;      // linearAngle
+    float D = params.w;  // toeStrength
+    float E = 0.01;      // toeNumerator
+    float F = 0.30;      // toeDenominator
+    float W = params.x;  // whitePoint
+    
+    float3 whiteScale = 1.0 / filmicToneMap(float3(W), A, B, C, D, E, F);
+    rgb = filmicToneMap(rgb, A, B, C, D, E, F) * whiteScale;
+    
+    rgb = linearToSrgb3(saturate(rgb));
+    
+    return float4(rgb, color.a);
 }
