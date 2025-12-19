@@ -1,5 +1,8 @@
 // CameraManager.swift
 // Film Camera - Production Ready Camera Management
+// ★★★ FIXED: Memory leak in inProgressPhotoCaptures ★★★
+// ★★★ FIXED: Added session interruption handling ★★★
+// ★★★ ADDED: getCurrentZoomFactor() for zoom gesture ★★★
 
 import AVFoundation
 import UIKit
@@ -14,6 +17,7 @@ final class CameraManager: NSObject, ObservableObject {
     @Published private(set) var currentPosition: AVCaptureDevice.Position = .back
     @Published var flashMode: AVCaptureDevice.FlashMode = .off
     @Published private(set) var error: CameraError?
+    @Published private(set) var isInterrupted = false  // ★ NEW
     
     // MARK: - Session
     
@@ -23,9 +27,10 @@ final class CameraManager: NSObject, ObservableObject {
     
     // MARK: - Capture
     
-    private var videoDeviceInput: AVCaptureDeviceInput?
+    private(set) var videoDeviceInput: AVCaptureDeviceInput?  // ★ Changed to internal for zoom access
     private let photoOutput = AVCapturePhotoOutput()
     private var inProgressPhotoCaptures = [Int64: PhotoCaptureProcessor]()
+    private let capturesLock = NSLock()  // ★ Thread safety for captures dictionary
     
     // MARK: - Error Types
     
@@ -34,6 +39,7 @@ final class CameraManager: NSObject, ObservableObject {
         case cannotAddInput
         case cannotAddOutput
         case configurationFailed
+        case sessionInterrupted(reason: AVCaptureSession.InterruptionReason)
         
         var errorDescription: String? {
             switch self {
@@ -41,6 +47,21 @@ final class CameraManager: NSObject, ObservableObject {
             case .cannotAddInput: return "Cannot add camera input"
             case .cannotAddOutput: return "Cannot add photo output"
             case .configurationFailed: return "Camera configuration failed"
+            case .sessionInterrupted(let reason):
+                switch reason {
+                case .videoDeviceNotAvailableInBackground:
+                    return "Camera unavailable in background"
+                case .audioDeviceInUseByAnotherClient:
+                    return "Audio device in use"
+                case .videoDeviceInUseByAnotherClient:
+                    return "Camera in use by another app"
+                case .videoDeviceNotAvailableWithMultipleForegroundApps:
+                    return "Camera unavailable in split screen"
+                case .videoDeviceNotAvailableDueToSystemPressure:
+                    return "System pressure - camera unavailable"
+                @unknown default:
+                    return "Camera interrupted"
+                }
             }
         }
     }
@@ -49,10 +70,85 @@ final class CameraManager: NSObject, ObservableObject {
     
     override init() {
         super.init()
+        setupObservers()  // ★ NEW
     }
     
     deinit {
+        removeObservers()
         stopSession()
+    }
+    
+    // MARK: - ★★★ NEW: Session Interruption Handling ★★★
+    
+    private func setupObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionWasInterrupted),
+            name: .AVCaptureSessionWasInterrupted,
+            object: session
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionInterruptionEnded),
+            name: .AVCaptureSessionInterruptionEnded,
+            object: session
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionRuntimeError),
+            name: .AVCaptureSessionRuntimeError,
+            object: session
+        )
+    }
+    
+    private func removeObservers() {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func sessionWasInterrupted(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVCaptureSessionInterruptionReasonKey] as? Int,
+              let reason = AVCaptureSession.InterruptionReason(rawValue: reasonValue) else {
+            return
+        }
+        
+        print("⚠️ CameraManager: Session interrupted - \(reason)")
+        
+        DispatchQueue.main.async {
+            self.isInterrupted = true
+            self.error = .sessionInterrupted(reason: reason)
+        }
+    }
+    
+    @objc private func sessionInterruptionEnded(_ notification: Notification) {
+        print("✅ CameraManager: Session interruption ended")
+        
+        DispatchQueue.main.async {
+            self.isInterrupted = false
+            self.error = nil
+        }
+    }
+    
+    @objc private func sessionRuntimeError(_ notification: Notification) {
+        guard let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError else {
+            return
+        }
+        
+        print("❌ CameraManager: Runtime error - \(error.localizedDescription)")
+        
+        // Try to restart session if media services were reset
+        if error.code == .mediaServicesWereReset {
+            sessionQueue.async {
+                if self.isSessionRunning {
+                    self.session.startRunning()
+                    DispatchQueue.main.async {
+                        self.isSessionRunning = self.session.isRunning
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Permission Handling
@@ -131,7 +227,6 @@ final class CameraManager: NSObject, ObservableObject {
             session.addOutput(photoOutput)
             
             if #available(iOS 16.0, *) {
-                // Truy cập vào activeFormat của thiết bị đầu vào (videoDeviceInput)
                 if let device = self.videoDeviceInput?.device {
                     photoOutput.maxPhotoDimensions = device.activeFormat.supportedMaxPhotoDimensions.last ?? .init(width: 0, height: 0)
                 }
@@ -140,7 +235,6 @@ final class CameraManager: NSObject, ObservableObject {
             }
             photoOutput.maxPhotoQualityPrioritization = .quality
             
-            // Enable Live Photo if available
             if photoOutput.isLivePhotoCaptureSupported {
                 photoOutput.isLivePhotoCaptureEnabled = false
             }
@@ -155,12 +249,10 @@ final class CameraManager: NSObject, ObservableObject {
         session.commitConfiguration()
         isConfigured = true
         
-        // Start running
         startSession()
     }
     
     private func bestVideoDevice(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
-        // Try to get the best available camera
         let deviceTypes: [AVCaptureDevice.DeviceType] = [
             .builtInTripleCamera,
             .builtInDualWideCamera,
@@ -232,7 +324,6 @@ final class CameraManager: NSObject, ObservableObject {
                         self.currentPosition = newPosition
                     }
                 } else {
-                    // Rollback
                     self.session.addInput(currentInput)
                 }
                 
@@ -258,6 +349,13 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
     
+    // MARK: - ★★★ NEW: Get Current Zoom Factor (for gesture) ★★★
+    
+    func getCurrentZoomFactor() -> CGFloat {
+        guard let device = videoDeviceInput?.device else { return 1.0 }
+        return device.videoZoomFactor
+    }
+    
     // MARK: - Photo Capture
     
     func capturePhoto(preset: FilterPreset? = nil, completion: @escaping (UIImage?) -> Void) {
@@ -267,29 +365,47 @@ final class CameraManager: NSObject, ObservableObject {
                 return
             }
 
-            // Configure settings
             var settings = AVCapturePhotoSettings()
 
-            // Use HEVC if available
             if self.photoOutput.availablePhotoCodecTypes.contains(.hevc) {
                 settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
             }
 
-            // Flash
             if self.videoDeviceInput?.device.isFlashAvailable == true {
                 settings.flashMode = self.flashMode
             }
 
-            // Quality
             settings.isHighResolutionPhotoEnabled = true
             settings.photoQualityPrioritization = .quality
 
-            // Create processor with preset for filtering
-            let processor = PhotoCaptureProcessor(preset: preset, completion: completion)
-            self.inProgressPhotoCaptures[settings.uniqueID] = processor
-
+            // ★★★ FIX: Pass cleanup callback to processor ★★★
+            let uniqueID = settings.uniqueID
+            let processor = PhotoCaptureProcessor(
+                preset: preset,
+                completion: completion,
+                cleanup: { [weak self] in
+                    self?.removePhotoCapture(id: uniqueID)
+                }
+            )
+            
+            self.addPhotoCapture(id: uniqueID, processor: processor)
             self.photoOutput.capturePhoto(with: settings, delegate: processor)
         }
+    }
+    
+    // ★★★ NEW: Thread-safe capture management ★★★
+    
+    private func addPhotoCapture(id: Int64, processor: PhotoCaptureProcessor) {
+        capturesLock.lock()
+        inProgressPhotoCaptures[id] = processor
+        capturesLock.unlock()
+    }
+    
+    private func removePhotoCapture(id: Int64) {
+        capturesLock.lock()
+        inProgressPhotoCaptures.removeValue(forKey: id)
+        capturesLock.unlock()
+        print("📸 CameraManager: Cleaned up capture processor (remaining: \(inProgressPhotoCaptures.count))")
     }
     
     // MARK: - Focus & Exposure
@@ -344,14 +460,19 @@ final class CameraManager: NSObject, ObservableObject {
 private class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
     private let preset: FilterPreset?
     private let completion: (UIImage?) -> Void
+    private let cleanup: () -> Void  // ★★★ NEW: Cleanup callback ★★★
 
-    init(preset: FilterPreset? = nil, completion: @escaping (UIImage?) -> Void) {
+    init(preset: FilterPreset? = nil, completion: @escaping (UIImage?) -> Void, cleanup: @escaping () -> Void) {
         self.preset = preset
         self.completion = completion
+        self.cleanup = cleanup
         super.init()
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        // ★★★ FIX: Always cleanup, even on error ★★★
+        defer { cleanup() }
+        
         if let error = error {
             print("Error capturing photo: \(error.localizedDescription)")
             DispatchQueue.main.async {
@@ -368,7 +489,6 @@ private class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
             return
         }
 
-        // Apply filter if preset is provided
         let finalImage: UIImage?
         if let preset = preset {
             print("📸 PhotoCaptureProcessor: Applying filter '\(preset.label)' to captured photo...")

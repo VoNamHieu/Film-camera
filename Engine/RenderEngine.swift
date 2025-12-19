@@ -1,6 +1,6 @@
 // RenderEngine.swift
-// Film Camera - Core Metal Rendering Engine (FIXED VERSION)
-// Added: Separable bloom/halation pipelines, lens distortion, GPU sync
+// Film Camera - Core Metal Rendering Engine
+// ★★★ FIXED: GPU synchronization in applyFilter() ★★★
 
 import Foundation
 import Metal
@@ -22,23 +22,23 @@ class RenderEngine {
     private(set) var instantFramePipeline: MTLRenderPipelineState?
     private(set) var lensDistortionPipeline: MTLRenderPipelineState?
     
-    // ★ Legacy single-pass (for fallback)
+    // Legacy single-pass (for fallback)
     private(set) var bloomPipeline: MTLRenderPipelineState?
     private(set) var halationPipeline: MTLRenderPipelineState?
     
-    // ★ NEW: Separable Bloom Pipeline (4 passes)
+    // Separable Bloom Pipeline (4 passes)
     private(set) var bloomThresholdPipeline: MTLRenderPipelineState?
     private(set) var bloomHorizontalPipeline: MTLRenderPipelineState?
     private(set) var bloomVerticalPipeline: MTLRenderPipelineState?
     private(set) var bloomCompositePipeline: MTLRenderPipelineState?
     
-    // ★ NEW: Separable Halation Pipeline (4 passes)
+    // Separable Halation Pipeline (4 passes)
     private(set) var halationThresholdPipeline: MTLRenderPipelineState?
     private(set) var halationHorizontalPipeline: MTLRenderPipelineState?
     private(set) var halationVerticalPipeline: MTLRenderPipelineState?
     private(set) var halationCompositePipeline: MTLRenderPipelineState?
     
-    // ★ NEW: Tone Mapping
+    // Tone Mapping
     private(set) var toneMappingPipeline: MTLRenderPipelineState?
     
     // LUT textures cache
@@ -88,13 +88,13 @@ class RenderEngine {
         bloomPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomFragment")
         halationPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationFragment")
         
-        // ★ Separable Bloom Pipeline
+        // Separable Bloom Pipeline
         bloomThresholdPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomThresholdFragment")
         bloomHorizontalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomHorizontalFragment")
         bloomVerticalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bloomVerticalFragment")
         bloomCompositePipeline = createPipelineWithTwoTextures(vertex: vertexFunction, fragmentName: "bloomCompositeFragment")
         
-        // ★ Separable Halation Pipeline
+        // Separable Halation Pipeline
         halationThresholdPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationThresholdFragment")
         halationHorizontalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationHorizontalFragment")
         halationVerticalPipeline = createPipeline(vertex: vertexFunction, fragmentName: "halationVerticalFragment")
@@ -128,7 +128,6 @@ class RenderEngine {
     }
     
     private func createPipelineWithTwoTextures(vertex: MTLFunction?, fragmentName: String) -> MTLRenderPipelineState? {
-        // Same as above - Metal handles multiple textures automatically
         return createPipeline(vertex: vertex, fragmentName: fragmentName)
     }
     
@@ -198,7 +197,8 @@ class RenderEngine {
     }
 
     // MARK: - Photo Filtering
-
+    
+    // ★★★ FIXED: GPU Synchronization ★★★
     /// Apply filter to UIImage and return filtered UIImage
     func applyFilter(to image: UIImage, preset: FilterPreset) -> UIImage? {
         print("🎨 RenderEngine: Applying filter to captured photo...")
@@ -214,7 +214,7 @@ class RenderEngine {
             return nil
         }
 
-        // ★ FIX: Use readable texture for CPU access
+        // Use readable texture for CPU access
         guard let outputTexture = texturePool.readableTexture(
             width: inputTexture.width,
             height: inputTexture.height,
@@ -224,25 +224,22 @@ class RenderEngine {
             return nil
         }
 
-        // Apply filter using FilterRenderer
+        // ★★★ FIX: Use synchronous rendering with proper GPU wait ★★★
         let filterRenderer = FilterRenderer()
         
-        // Create command buffer for synchronous execution
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            print("❌ RenderEngine: Failed to create command buffer")
-            return nil
-        }
-        
-        filterRenderer.render(
+        // renderSync() returns only after GPU completes
+        let success = filterRenderer.renderSync(
             input: inputTexture,
             output: outputTexture,
             preset: preset,
             commandQueue: commandQueue
         )
-
-        // ★ FIX: Wait for GPU to finish before reading texture
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+        
+        guard success else {
+            print("❌ RenderEngine: Filter rendering failed")
+            texturePool.recycle(outputTexture)
+            return nil
+        }
 
         // Convert MTLTexture → CGImage → UIImage
         guard let filteredCGImage = textureToCGImage(texture: outputTexture) else {

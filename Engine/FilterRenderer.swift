@@ -1,6 +1,6 @@
 // FilterRenderer.swift
-// Film Camera - Core Filter Rendering Pipeline (FIXED VERSION)
-// ★★★ CRITICAL FIX: addCompletedHandler MUST be called BEFORE commit()
+// Film Camera - Core Filter Rendering Pipeline
+// ★★★ FIXED: Added renderSync() with proper GPU synchronization ★★★
 
 import Foundation
 import Metal
@@ -26,7 +26,7 @@ class FilterRenderer {
 
     // MARK: - Main Rendering Pipeline (Render to Drawable)
     
-    /// Render directly to drawable with proper presentation
+    /// Render directly to drawable with proper presentation (async, for preview)
     func renderToDrawable(input: MTLTexture, drawable: CAMetalDrawable, preset: FilterPreset, commandQueue: MTLCommandQueue) {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             print("FilterRenderer: Failed to create command buffer")
@@ -42,11 +42,118 @@ class FilterRenderer {
             return
         }
 
-        // ★ FIX: Use ping-pong buffer pattern
         pingPongTextures[0] = temp1
         pingPongTextures[1] = temp2
         pingPongIndex = 0
 
+        var currentInput = input
+
+        // Execute filter pipeline
+        currentInput = executePipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
+
+        // FINAL PASS: Blit to drawable
+        blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
+
+        // Recycle textures after GPU completes
+        commandBuffer.addCompletedHandler { [weak texturePool] _ in
+            texturePool?.recycle(temp1)
+            texturePool?.recycle(temp2)
+        }
+
+        // Present and commit
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+    }
+
+    // MARK: - ★★★ FIXED: Synchronous Render (for photo capture) ★★★
+    
+    /// Render to texture SYNCHRONOUSLY - waits for GPU to complete before returning
+    /// Returns true if successful, false otherwise
+    func renderSync(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) -> Bool {
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            print("FilterRenderer: Failed to create command buffer")
+            return false
+        }
+
+        let texturePool = RenderEngine.shared.texturePool
+
+        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+            print("FilterRenderer: Failed to allocate intermediate textures")
+            return false
+        }
+
+        pingPongTextures[0] = temp1
+        pingPongTextures[1] = temp2
+        pingPongIndex = 0
+
+        var currentInput = input
+
+        // Execute filter pipeline
+        currentInput = executePipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
+
+        // Final blit to output
+        blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
+
+        // ★★★ CRITICAL: Commit and WAIT for GPU to complete ★★★
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        
+        // Check for errors
+        if let error = commandBuffer.error {
+            print("❌ FilterRenderer: GPU error - \(error.localizedDescription)")
+            texturePool.recycle(temp1)
+            texturePool.recycle(temp2)
+            return false
+        }
+
+        // Recycle textures AFTER GPU is done (synchronous, so safe to do here)
+        texturePool.recycle(temp1)
+        texturePool.recycle(temp2)
+        
+        return true
+    }
+    
+    // MARK: - Async Render (legacy, for backwards compatibility)
+    
+    /// Render to texture asynchronously (for non-blocking operations)
+    func render(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) {
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            print("FilterRenderer: Failed to create command buffer")
+            return
+        }
+
+        let texturePool = RenderEngine.shared.texturePool
+
+        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+            print("FilterRenderer: Failed to allocate intermediate textures")
+            return
+        }
+
+        pingPongTextures[0] = temp1
+        pingPongTextures[1] = temp2
+        pingPongIndex = 0
+
+        var currentInput = input
+
+        // Execute filter pipeline
+        currentInput = executePipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
+
+        blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
+
+        // Recycle after completion (async)
+        commandBuffer.addCompletedHandler { [weak texturePool] _ in
+            texturePool?.recycle(temp1)
+            texturePool?.recycle(temp2)
+        }
+
+        commandBuffer.commit()
+    }
+
+    // MARK: - Shared Pipeline Execution
+    
+    private func executePipeline(input: MTLTexture, preset: FilterPreset, commandBuffer: MTLCommandBuffer) -> MTLTexture {
         var currentInput = input
 
         // PASS 1: Lens Distortion
@@ -96,92 +203,7 @@ class FilterRenderer {
             }
         }
 
-        // FINAL PASS: Blit to drawable
-        blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
-
-        // ★★★ CRITICAL: addCompletedHandler MUST be BEFORE commit() ★★★
-        commandBuffer.addCompletedHandler { [weak texturePool] _ in
-            texturePool?.recycle(temp1)
-            texturePool?.recycle(temp2)
-        }
-
-        // Present and commit AFTER adding completion handler
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
-    }
-
-    // MARK: - Render to Texture (for photo capture)
-    
-    func render(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) {
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            print("FilterRenderer: Failed to create command buffer")
-            return
-        }
-
-        let texturePool = RenderEngine.shared.texturePool
-
-        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
-              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
-            print("FilterRenderer: Failed to allocate intermediate textures")
-            return
-        }
-
-        pingPongTextures[0] = temp1
-        pingPongTextures[1] = temp2
-        pingPongIndex = 0
-
-        var currentInput = input
-
-        // Same pipeline as renderToDrawable
-        if preset.lensDistortion.enabled {
-            if let result = applyLensDistortion(input: currentInput, params: preset.lensDistortion, commandBuffer: commandBuffer) {
-                currentInput = result
-            }
-        }
-
-        if let result = applyColorGrading(input: currentInput, preset: preset, commandBuffer: commandBuffer) {
-            currentInput = result
-        }
-
-        if preset.grain.enabled {
-            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
-                currentInput = result
-            }
-        }
-
-        if preset.bloom.enabled {
-            if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
-                currentInput = result
-            }
-        }
-
-        if preset.vignette.enabled {
-            if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
-                currentInput = result
-            }
-        }
-
-        if preset.halation.enabled {
-            if let result = applyHalationSeparable(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
-                currentInput = result
-            }
-        }
-
-        if preset.instantFrame.enabled {
-            if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
-                currentInput = result
-            }
-        }
-
-        blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
-
-        // ★★★ FIX: addCompletedHandler BEFORE commit() ★★★
-        commandBuffer.addCompletedHandler { [weak texturePool] _ in
-            texturePool?.recycle(temp1)
-            texturePool?.recycle(temp2)
-        }
-
-        commandBuffer.commit()
+        return currentInput
     }
 
     // MARK: - Ping-Pong Buffer Helper
@@ -229,17 +251,17 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        // ★ FIX: Prepare params AFTER checking if LUT actually loaded
+        // Prepare params AFTER checking if LUT actually loaded
         var params = prepareColorGradingParams(preset)
         
-        // ★ FIX: Only set useLUT = 1 if texture actually loaded successfully
+        // Only set useLUT = 1 if texture actually loaded successfully
         var lutLoaded = false
         if let lutFile = preset.lutFile, let lutTexture = RenderEngine.shared.loadLUT(named: lutFile) {
             renderEncoder.setFragmentTexture(lutTexture, index: 1)
             lutLoaded = true
         }
         
-        // ★ FIX: Override useLUT based on actual load status
+        // Override useLUT based on actual load status
         params.useLUT = lutLoaded ? 1 : 0
         
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
@@ -269,12 +291,11 @@ class FilterRenderer {
         return output
     }
 
-    // MARK: - ★ SEPARABLE BLOOM PIPELINE (4 passes)
+    // MARK: - Separable Bloom Pipeline (4 passes)
     
     private func applyBloomSeparable(input: MTLTexture, config: BloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         let texturePool = RenderEngine.shared.texturePool
         
-        // Need extra textures for intermediate blur passes
         guard let thresholdTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let horizontalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let verticalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
@@ -341,7 +362,7 @@ class FilterRenderer {
         return output
     }
 
-    // MARK: - ★ SEPARABLE HALATION PIPELINE (4 passes)
+    // MARK: - Separable Halation Pipeline (4 passes)
     
     private func applyHalationSeparable(input: MTLTexture, config: HalationConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         let texturePool = RenderEngine.shared.texturePool
@@ -512,7 +533,8 @@ class FilterRenderer {
         var params = BloomParams()
         params.intensity = config.intensity
         params.threshold = config.threshold
-        params.radius = config.radius
+        // ★ FIX: Cap radius for performance
+        params.radius = min(config.radius, 20.0)
         params.softness = config.softness
         params.colorTint = SIMD3<Float>(config.colorTint.r, config.colorTint.g, config.colorTint.b)
         params.enabled = config.enabled ? 1 : 0
@@ -533,7 +555,8 @@ class FilterRenderer {
         var params = HalationParams()
         params.intensity = config.intensity
         params.threshold = config.threshold
-        params.radius = config.radius
+        // ★ FIX: Cap radius for performance
+        params.radius = min(config.radius, 25.0)
         params.softness = config.softness
         params.color = SIMD3<Float>(config.color.r, config.color.g, config.color.b)
         params.enabled = config.enabled ? 1 : 0

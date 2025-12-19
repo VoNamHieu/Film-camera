@@ -1,6 +1,6 @@
 // MetalPreviewView.swift
 // Film Camera - Metal-based Camera Preview with Real-time Filtering
-// ★ FIX: Added proper video orientation handling
+// ★★★ FIXED: Video orientation only updates when changed, not every frame ★★★
 
 import SwiftUI
 import MetalKit
@@ -28,7 +28,6 @@ struct MetalPreviewView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MTKView, context: Context) {
         context.coordinator.currentPreset = selectedPreset
-        // ★ Update camera position for mirror handling
         context.coordinator.isFrontCamera = cameraManager.currentPosition == .front
     }
 
@@ -40,15 +39,22 @@ struct MetalPreviewView: UIViewRepresentable {
 
     class Coordinator: NSObject, MTKViewDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
         var currentPreset: FilterPreset
-        var isFrontCamera: Bool = false
+        var isFrontCamera: Bool = false {
+            didSet {
+                if oldValue != isFrontCamera {
+                    orientationNeedsUpdate = true  // ★ Only update when changed
+                }
+            }
+        }
         
         private var currentPixelBuffer: CVPixelBuffer?
         private var textureCache: CVMetalTextureCache?
         private let filterRenderer: FilterRenderer
         private var videoOutputAdded = false
         
-        // ★ FIX: Track video orientation
-        private var videoOrientation: CGImagePropertyOrientation = .up
+        // ★★★ FIX: Track orientation state to avoid per-frame updates ★★★
+        private var orientationNeedsUpdate = true
+        private var lastConfiguredOrientation: CGFloat = 90
         
         // Frame timing for debugging
         private var lastFrameTime: CFAbsoluteTime = 0
@@ -60,6 +66,22 @@ struct MetalPreviewView: UIViewRepresentable {
             super.init()
 
             CVMetalTextureCacheCreate(nil, nil, RenderEngine.shared.device, nil, &textureCache)
+            
+            // ★ Observe orientation changes
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(orientationDidChange),
+                name: UIDevice.orientationDidChangeNotification,
+                object: nil
+            )
+        }
+        
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+        
+        @objc private func orientationDidChange() {
+            orientationNeedsUpdate = true
         }
 
         func setupVideoOutput(cameraManager: CameraManager) {
@@ -69,7 +91,6 @@ struct MetalPreviewView: UIViewRepresentable {
                 if let existingOutput = existingOutputs.first {
                     existingOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output", qos: .userInteractive))
                     
-                    // ★ FIX: Set video orientation on connection
                     if let connection = existingOutput.connection(with: .video) {
                         configureVideoOrientation(connection)
                     }
@@ -90,7 +111,6 @@ struct MetalPreviewView: UIViewRepresentable {
             if cameraManager.session.canAddOutput(videoOutput) {
                 cameraManager.session.addOutput(videoOutput)
                 
-                // ★ FIX: Configure orientation AFTER adding output
                 if let connection = videoOutput.connection(with: .video) {
                     configureVideoOrientation(connection)
                 }
@@ -100,24 +120,29 @@ struct MetalPreviewView: UIViewRepresentable {
             cameraManager.session.commitConfiguration()
         }
         
-        // ★ FIX: Configure video orientation for portrait mode
+        // ★★★ FIXED: Only configure when needed ★★★
         private func configureVideoOrientation(_ connection: AVCaptureConnection) {
             // Set video orientation to portrait
             if connection.isVideoRotationAngleSupported(90) {
-                connection.videoRotationAngle = 90  // Portrait orientation
+                connection.videoRotationAngle = 90
+                lastConfiguredOrientation = 90
             }
             
             // Handle mirroring for front camera
             if connection.isVideoMirroringSupported {
                 connection.isVideoMirrored = isFrontCamera
             }
+            
+            orientationNeedsUpdate = false
         }
 
         // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
 
         func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-            // ★ FIX: Update orientation on each frame (handles rotation changes)
-            configureVideoOrientation(connection)
+            // ★★★ FIX: Only update orientation when needed, not every frame ★★★
+            if orientationNeedsUpdate {
+                configureVideoOrientation(connection)
+            }
             
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
             currentPixelBuffer = pixelBuffer
@@ -125,12 +150,16 @@ struct MetalPreviewView: UIViewRepresentable {
         
         func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
             // Frame dropped - expected under heavy load
+            #if DEBUG
+            print("⚠️ MetalPreviewView: Frame dropped")
+            #endif
         }
 
         // MARK: - MTKViewDelegate
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
             print("🎬 MetalPreviewView: Drawable size changed to \(size)")
+            orientationNeedsUpdate = true  // ★ May need reconfig after resize
         }
 
         func draw(in view: MTKView) {
@@ -179,7 +208,7 @@ struct MetalPreviewView: UIViewRepresentable {
             let now = CFAbsoluteTimeGetCurrent()
             if now - lastFrameTime >= 1.0 {
                 let fps = Double(frameCount) / (now - lastFrameTime)
-                if fps < 30 {
+                if fps < 25 {
                     print("⚠️ MetalPreviewView: Low FPS: \(Int(fps))")
                 }
                 frameCount = 0
