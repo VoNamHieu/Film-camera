@@ -1,7 +1,3 @@
-// FilterRenderer.swift
-// Film Camera - Core Filter Rendering Pipeline
-// ★★★ FIXED V2: Proper scaling to drawable size - fixes black border issue ★★★
-
 import Foundation
 import Metal
 import MetalKit
@@ -15,7 +11,7 @@ class FilterRenderer {
     private var pingPongTextures: [MTLTexture?] = [nil, nil]
     private var pingPongIndex: Int = 0
     
-    // ★★★ DEBUG: Frame counter for periodic logging ★★★
+    // DEBUG: Frame counter for periodic logging
     private var frameCount: Int = 0
     private var lastLogTime: CFAbsoluteTime = 0
 
@@ -28,10 +24,10 @@ class FilterRenderer {
         renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     }
 
-    // MARK: - ★★★ FIXED V2: Preview Pipeline with Proper Scaling ★★★
+    // MARK: - Preview Pipeline with Proper Scaling
     
     /// Lightweight preview rendering for live viewfinder
-    /// Now includes: Scale → ColorGrading → Grain → Bloom(simple) → Vignette → InstantFrame
+    /// Includes: Scale → ColorGrading → Grain → Bloom(simple) → Vignette → InstantFrame
     func renderPreview(input: MTLTexture, drawable: CAMetalDrawable, preset: FilterPreset, commandQueue: MTLCommandQueue) {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             print("❌ FilterRenderer: Failed to create command buffer")
@@ -40,7 +36,7 @@ class FilterRenderer {
 
         let texturePool = RenderEngine.shared.texturePool
         
-        // ★★★ FIX: Use DRAWABLE size for intermediate textures to prevent black borders ★★★
+        // Use DRAWABLE size for intermediate textures to prevent black borders
         let outputWidth = drawable.texture.width
         let outputHeight = drawable.texture.height
 
@@ -63,7 +59,7 @@ class FilterRenderer {
         // PREVIEW PIPELINE: Scale + 5 passes for good quality with decent performance
         // ═══════════════════════════════════════════════════════════════
         
-        // ★★★ PASS 0: Scale input to drawable size (fixes black border) ★★★
+        // PASS 0: Scale input to drawable size (fixes black border)
         if input.width != outputWidth || input.height != outputHeight {
             if let scaled = scaleTexture(input: input, commandBuffer: commandBuffer) {
                 currentInput = scaled
@@ -154,9 +150,21 @@ class FilterRenderer {
         commandBuffer.commit()
     }
     
-    // MARK: - ★★★ NEW: Scale Texture Pass (for fixing black border) ★★★
+    // MARK: - ★★★ FIXED V3: Scale Texture Pass with CORRECT Neutral Values ★★★
     
     /// Scales input texture to match ping-pong buffer size using color grading shader as passthrough
+    ///
+    /// CRITICAL FIX: The colorGradingFragment shader applies these formulas:
+    ///   contrast:   rgb = (rgb - 0.5) * (1.0 + p.contrast) + 0.5
+    ///   saturation: rgb = mix(luma, rgb, 1.0 + p.saturation)
+    ///
+    /// For TRUE PASSTHROUGH (no color change):
+    ///   contrast = 0.0   → (1.0 + 0.0) = 1.0 multiplier ✓ NEUTRAL
+    ///   saturation = 0.0 → (1.0 + 0.0) = 1.0 multiplier ✓ NEUTRAL
+    ///
+    /// WRONG (old code):
+    ///   contrast = 1.0   → (1.0 + 1.0) = 2.0 multiplier ✗ DOUBLES CONTRAST!
+    ///   saturation = 1.0 → (1.0 + 1.0) = 2.0 multiplier ✗ DOUBLES SATURATION!
     private func scaleTexture(input: MTLTexture, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         guard let pipeline = RenderEngine.shared.colorGradingPipeline,
               let output = getNextOutputTexture() else {
@@ -169,29 +177,29 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        // Use neutral color grading params for passthrough
+        // ★★★ FIXED V3: ALL parameters set to TRUE NEUTRAL values ★★★
         var params = ColorGradingParams()
-        params.exposure = 0.0
-        params.contrast = 1.0
+        params.exposure = 0.0           // 0.0 = no change (pow(2, 0) = 1.0)
+        params.contrast = 0.0           // ★ FIX: 0.0 is neutral (1.0 + 0.0 = 1.0)
         params.highlights = 0.0
         params.shadows = 0.0
         params.whites = 0.0
         params.blacks = 0.0
-        params.saturation = 1.0
+        params.saturation = 0.0         // ★ FIX: 0.0 is neutral (1.0 + 0.0 = 1.0)
         params.vibrance = 0.0
         params.temperature = 0.0
         params.tint = 0.0
         params.fade = 0.0
         params.clarity = 0.0
         params.shadowsHue = 0.0
-        params.shadowsSat = 0.0
+        params.shadowsSat = 0.0         // 0.0 = no split tone
         params.highlightsHue = 0.0
-        params.highlightsSat = 0.0
+        params.highlightsSat = 0.0      // 0.0 = no split tone
         params.splitBalance = 0.0
         params.midtoneProtection = 0.5
-        params.selectiveColorCount = 0
-        params.lutIntensity = 0.0
-        params.useLUT = 0
+        params.selectiveColorCount = 0  // No selective color adjustments
+        params.lutIntensity = 0.0       // 0.0 = no LUT applied
+        params.useLUT = 0               // Explicitly disable LUT
         
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
@@ -200,10 +208,10 @@ class FilterRenderer {
         return output
     }
 
-    // MARK: - ★★★ Simplified Bloom (Single Pass, Radius 8) ★★★
+    // MARK: - Simplified Bloom (Single Pass, Radius 8)
     
     private func applyBloomSimplified(input: MTLTexture, config: BloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
-        guard let pipeline = RenderEngine.shared.bloomPipeline,  // Use legacy single-pass
+        guard let pipeline = RenderEngine.shared.bloomPipeline,
               let output = getNextOutputTexture() else {
             #if DEBUG
             if RenderEngine.shared.bloomPipeline == nil {
@@ -219,11 +227,11 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        // ★ OPTIMIZED: Cap radius at 8 for preview, skip every other sample
+        // OPTIMIZED: Cap radius at 8 for preview
         var params = BloomParams()
         params.intensity = config.intensity
         params.threshold = config.threshold
-        params.radius = min(config.radius, 8.0)  // ★ MAX 8 for preview
+        params.radius = min(config.radius, 8.0)  // MAX 8 for preview
         params.softness = config.softness
         params.colorTint = SIMD3<Float>(config.colorTint.r, config.colorTint.g, config.colorTint.b)
         params.enabled = 1
@@ -246,7 +254,7 @@ class FilterRenderer {
 
         let texturePool = RenderEngine.shared.texturePool
         
-        // ★★★ FIX: Use DRAWABLE size for intermediate textures ★★★
+        // Use DRAWABLE size for intermediate textures
         let outputWidth = drawable.texture.width
         let outputHeight = drawable.texture.height
 
@@ -262,7 +270,7 @@ class FilterRenderer {
 
         var currentInput: MTLTexture = input
         
-        // ★★★ Scale input to drawable size first ★★★
+        // Scale input to drawable size first
         if input.width != outputWidth || input.height != outputHeight {
             if let scaled = scaleTexture(input: input, commandBuffer: commandBuffer) {
                 currentInput = scaled
@@ -284,7 +292,7 @@ class FilterRenderer {
         commandBuffer.commit()
     }
 
-    // MARK: - ★★★ Synchronous Render (for photo capture) with Debug ★★★
+    // MARK: - Synchronous Render (for photo capture) with Debug
     
     /// Render to texture SYNCHRONOUSLY with FULL quality pipeline
     func renderSync(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) -> Bool {
@@ -318,7 +326,7 @@ class FilterRenderer {
         // Final blit to output
         blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
 
-        // ★★★ CRITICAL: Commit and WAIT for GPU to complete ★★★
+        // CRITICAL: Commit and WAIT for GPU to complete
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         
