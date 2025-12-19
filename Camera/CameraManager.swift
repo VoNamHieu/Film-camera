@@ -6,6 +6,7 @@ import AVFoundation
 import UIKit
 import Photos
 import Metal
+import MetalKit  // ★★★ REQUIRED for MTKTextureLoader ★★★
 import Combine  // ★★★ REQUIRED for @Published ★★★
 
 // MARK: - Permission Status Enum
@@ -340,6 +341,8 @@ class CameraManager: NSObject, ObservableObject {
         
         photoSettings.flashMode = flashMode
         
+        let uniqueID = photoSettings.uniqueID
+
         // Create processor for this capture
         let processor = PhotoCaptureProcessor(
             preset: preset,
@@ -349,18 +352,15 @@ class CameraManager: NSObject, ObservableObject {
                     self?.isCapturing = false
                     self?.lastCapturedImage = image
                     
-                    // Clean up processor
-                    if let uniqueID = self?.inProgressPhotoCaptures.first(where: { $0.value === processor })?.key {
-                        self?.inProgressPhotoCaptures.removeValue(forKey: uniqueID)
-                    }
+                    // Clean up processor using captured uniqueID (not processor reference)
+                    self?.inProgressPhotoCaptures.removeValue(forKey: uniqueID)
                     
                     completion(image)
                 }
             }
         )
-        
-        // Store processor with unique ID
-        let uniqueID = photoSettings.uniqueID
+
+        // Store processor
         inProgressPhotoCaptures[uniqueID] = processor
         
         // Capture photo
