@@ -2,7 +2,8 @@
 // Film Camera - FilterPreset extension for RGB Curves
 // Add RGB Curves to existing filter presets
 //
-// ★ Uses FilmCurvesConfig (Swift) instead of RGBCurvesParams (Metal)
+// ★ NOTE: Property renamed to `filmCurves` to avoid conflict with
+//   existing `rgbCurves: RGBCurves` property in Models.swift
 
 import Foundation
 
@@ -11,7 +12,8 @@ import Foundation
 extension FilterPreset {
     
     /// Get RGB curves configuration for this preset
-    var rgbCurves: FilmCurvesConfig {
+    /// ★ Named `filmCurves` to avoid conflict with `rgbCurves` in FilterPreset
+    var filmCurves: FilmCurvesConfig {
         // Match preset to appropriate curves
         switch id {
         // Professional Film
@@ -76,7 +78,6 @@ extension FilterPreset {
             )
             
         case .slide:
-            // High contrast for slide film
             return FilmCurvesConfig(
                 redCurve: FilmCurvesConfig.sContrastCurve(strength: 0.25),
                 greenCurve: FilmCurvesConfig.sContrastCurve(strength: 0.25),
@@ -97,7 +98,6 @@ extension FilterPreset {
             return .disposable
             
         case .food:
-            // Warm, appetizing curves
             return FilmCurvesConfig(
                 redCurve: [
                     FilmCurvePoint(input: 0.0, output: 0.02),
@@ -119,7 +119,6 @@ extension FilterPreset {
             )
             
         case .night:
-            // Cool shadows, warm highlights
             return FilmCurvesConfig(
                 redCurve: [
                     FilmCurvePoint(input: 0.0, output: 0.0),
@@ -142,7 +141,6 @@ extension FilterPreset {
             )
             
         case .creative:
-            // Cross-process style
             return FilmCurvesConfig(
                 redCurve: [
                     FilmCurvePoint(input: 0.0, output: 0.05),

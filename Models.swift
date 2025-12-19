@@ -1,19 +1,19 @@
 // Models.swift
 // Film Camera - Professional Model (Merged with WebGL Engine)
-// ★ FIX: InstantFrameConfig default changed from enabled: true to enabled: false
+// ★ FIX: All structs now conform to Equatable for SwiftUI onChange support
 
 import Foundation
 import SwiftUI
 
 // MARK: - Filter Category
 
-enum FilterCategory: String, CaseIterable, Codable {
+enum FilterCategory: String, CaseIterable, Codable, Equatable {
     case professional, slide, consumer, cinema, blackAndWhite, instant, disposable, food, night, creative
 }
 
 // MARK: - Core Adjustments
 
-struct ColorAdjustments: Codable {
+struct ColorAdjustments: Codable, Equatable {
     var exposure: Float
     var contrast: Float
     var highlights: Float
@@ -37,8 +37,8 @@ struct ColorAdjustments: Codable {
     }
 }
 
-// MARK: - Selective Color (Cập nhật theo WebGL Engine)
-struct SelectiveColorAdjustment: Codable, Hashable {
+// MARK: - Selective Color
+struct SelectiveColorAdjustment: Codable, Hashable, Equatable {
     var hue: Float
     var range: Float
     var sat: Float
@@ -55,7 +55,7 @@ struct SelectiveColorAdjustment: Codable, Hashable {
 }
 
 // MARK: - Lens Distortion
-struct LensDistortionConfig: Codable {
+struct LensDistortionConfig: Codable, Equatable {
     var enabled: Bool
     var k1: Float
     var k2: Float
@@ -69,7 +69,7 @@ struct LensDistortionConfig: Codable {
 }
 
 // MARK: - Split Tone
-struct SplitToneConfig: Codable {
+struct SplitToneConfig: Codable, Equatable {
     var shadowsHue: Float, shadowsSat: Float, highlightsHue: Float, highlightsSat: Float
     var balance: Float, midtoneProtection: Float
 
@@ -82,12 +82,12 @@ struct SplitToneConfig: Codable {
 }
 
 // MARK: - RGB Curves
-struct RGBCurvePoint: Codable {
+struct RGBCurvePoint: Codable, Equatable {
     var input: Float, output: Float
     init(input: Float, output: Float) { self.input = input; self.output = output }
 }
 
-struct RGBCurves: Codable {
+struct RGBCurves: Codable, Equatable {
     var red: [RGBCurvePoint], green: [RGBCurvePoint], blue: [RGBCurvePoint]
     init(red: [RGBCurvePoint] = [], green: [RGBCurvePoint] = [], blue: [RGBCurvePoint] = []) {
         self.red = red; self.green = green; self.blue = blue
@@ -95,21 +95,21 @@ struct RGBCurves: Codable {
 }
 
 // MARK: - Grain
-struct GrainChannel: Codable {
+struct GrainChannel: Codable, Equatable {
     var intensity: Float, size: Float, seed: Int, softness: Float
     init(intensity: Float = 0.1, size: Float = 1.0, seed: Int = 1000, softness: Float = 0.5) {
         self.intensity = intensity; self.size = size; self.seed = seed; self.softness = softness
     }
 }
 
-struct GrainChannels: Codable {
+struct GrainChannels: Codable, Equatable {
     var red: GrainChannel, green: GrainChannel, blue: GrainChannel
     init(red: GrainChannel = GrainChannel(), green: GrainChannel = GrainChannel(), blue: GrainChannel = GrainChannel()) {
         self.red = red; self.green = green; self.blue = blue
     }
 }
 
-struct GrainTexture: Codable {
+struct GrainTexture: Codable, Equatable {
     var type: String, octaves: Int, persistence: Float, lacunarity: Float, baseFrequency: Float
     init(type: String = "perlin", octaves: Int = 2, persistence: Float = 0.5, lacunarity: Float = 1.8, baseFrequency: Float = 1.0) {
         self.type = type; self.octaves = octaves; self.persistence = persistence
@@ -117,17 +117,17 @@ struct GrainTexture: Codable {
     }
 }
 
-struct GrainDensityPoint: Codable {
+struct GrainDensityPoint: Codable, Equatable {
     var luma: Float, multiplier: Float
     init(luma: Float, multiplier: Float) { self.luma = luma; self.multiplier = multiplier }
 }
 
-struct ChromaticShift: Codable {
+struct ChromaticShift: Codable, Equatable {
     var x: Float, y: Float
     init(x: Float = 0, y: Float = 0) { self.x = x; self.y = y }
 }
 
-struct GrainChromatic: Codable {
+struct GrainChromatic: Codable, Equatable {
     var enabled: Bool, redShift: ChromaticShift, greenShift: ChromaticShift, blueShift: ChromaticShift
     init(enabled: Bool = false, redShift: ChromaticShift = ChromaticShift(),
          greenShift: ChromaticShift = ChromaticShift(), blueShift: ChromaticShift = ChromaticShift()) {
@@ -135,28 +135,28 @@ struct GrainChromatic: Codable {
     }
 }
 
-struct GrainClumping: Codable {
+struct GrainClumping: Codable, Equatable {
     var enabled: Bool, strength: Float, threshold: Float, clusterSize: Float
     init(enabled: Bool = false, strength: Float = 0.2, threshold: Float = 0.25, clusterSize: Float = 1.2) {
         self.enabled = enabled; self.strength = strength; self.threshold = threshold; self.clusterSize = clusterSize
     }
 }
 
-struct GrainTemporal: Codable {
+struct GrainTemporal: Codable, Equatable {
     var enabled: Bool, refreshRate: Int, seedIncrement: Int, coherence: Float
     init(enabled: Bool = true, refreshRate: Int = 1, seedIncrement: Int = 7919, coherence: Float = 0.25) {
         self.enabled = enabled; self.refreshRate = refreshRate; self.seedIncrement = seedIncrement; self.coherence = coherence
     }
 }
 
-struct GrainColorJitter: Codable {
+struct GrainColorJitter: Codable, Equatable {
     var enabled: Bool, strength: Float, perPixel: Bool, blueStrength: Float, seed: Int
     init(enabled: Bool = false, strength: Float = 0.002, perPixel: Bool = true, blueStrength: Float = 1.1, seed: Int = 100) {
         self.enabled = enabled; self.strength = strength; self.perPixel = perPixel; self.blueStrength = blueStrength; self.seed = seed
     }
 }
 
-struct GrainConfig: Codable {
+struct GrainConfig: Codable, Equatable {
     var enabled: Bool, globalIntensity: Float, channels: GrainChannels, texture: GrainTexture
     var densityCurve: [GrainDensityPoint], chromatic: GrainChromatic, clumping: GrainClumping
     var temporal: GrainTemporal, colorJitter: GrainColorJitter
@@ -172,12 +172,12 @@ struct GrainConfig: Codable {
 }
 
 // MARK: - Bloom
-struct ColorTint: Codable {
+struct ColorTint: Codable, Equatable {
     var r: Float, g: Float, b: Float
     init(r: Float = 1.0, g: Float = 1.0, b: Float = 1.0) { self.r = r; self.g = g; self.b = b }
 }
 
-struct BloomConfig: Codable {
+struct BloomConfig: Codable, Equatable {
     var enabled: Bool, intensity: Float, threshold: Float, radius: Float, softness: Float, colorTint: ColorTint
     init(enabled: Bool = true, intensity: Float = 0.05, threshold: Float = 0.75, radius: Float = 12,
          softness: Float = 0.75, colorTint: ColorTint = ColorTint()) {
@@ -187,7 +187,7 @@ struct BloomConfig: Codable {
 }
 
 // MARK: - Vignette
-struct VignetteConfig: Codable {
+struct VignetteConfig: Codable, Equatable {
     var enabled: Bool, intensity: Float, roundness: Float, feather: Float, midpoint: Float
     init(enabled: Bool = true, intensity: Float = 0.15, roundness: Float = 0.8, feather: Float = 0.6, midpoint: Float = 0.5) {
         self.enabled = enabled; self.intensity = intensity; self.roundness = roundness
@@ -196,12 +196,12 @@ struct VignetteConfig: Codable {
 }
 
 // MARK: - Halation
-struct HalationColor: Codable {
+struct HalationColor: Codable, Equatable {
     var r: Float, g: Float, b: Float
     init(r: Float = 1.0, g: Float = 0.3, b: Float = 0.15) { self.r = r; self.g = g; self.b = b }
 }
 
-struct HalationGradient: Codable {
+struct HalationGradient: Codable, Equatable {
     var enabled: Bool, inner: HalationColor, outer: HalationColor
     init(enabled: Bool = false, inner: HalationColor = HalationColor(r: 1.0, g: 0.4, b: 0.2),
          outer: HalationColor = HalationColor(r: 1.0, g: 0.2, b: 0.1)) {
@@ -209,7 +209,7 @@ struct HalationGradient: Codable {
     }
 }
 
-struct HalationConfig: Codable {
+struct HalationConfig: Codable, Equatable {
     var enabled: Bool, color: HalationColor, intensity: Float, threshold: Float
     var radius: Float, softness: Float, colorGradient: HalationGradient
 
@@ -222,34 +222,33 @@ struct HalationConfig: Codable {
 }
 
 // MARK: - Instant Film
-struct ChemicalFade: Codable {
+struct ChemicalFade: Codable, Equatable {
     var enabled: Bool, edgeFade: Float, cornerDarkening: Float, unevenDevelopment: Float
     init(enabled: Bool = true, edgeFade: Float = 0.12, cornerDarkening: Float = 0.08, unevenDevelopment: Float = 0.05) {
         self.enabled = enabled; self.edgeFade = edgeFade; self.cornerDarkening = cornerDarkening; self.unevenDevelopment = unevenDevelopment
     }
 }
 
-struct BorderWidth: Codable {
+struct BorderWidth: Codable, Equatable {
     var top: Float, left: Float, right: Float, bottom: Float
     init(top: Float = 0.06, left: Float = 0.05, right: Float = 0.05, bottom: Float = 0.18) {
         self.top = top; self.left = left; self.right = right; self.bottom = bottom
     }
 }
 
-struct BorderColor: Codable {
+struct BorderColor: Codable, Equatable {
     var r: Float, g: Float, b: Float
     init(r: Float = 0.98, g: Float = 0.97, b: Float = 0.96) { self.r = r; self.g = g; self.b = b }
 }
 
-struct FrameShadow: Codable {
+struct FrameShadow: Codable, Equatable {
     var enabled: Bool, blur: Float, opacity: Float, offsetY: Float
     init(enabled: Bool = true, blur: Float = 15, opacity: Float = 0.25, offsetY: Float = 8) {
         self.enabled = enabled; self.blur = blur; self.opacity = opacity; self.offsetY = offsetY
     }
 }
 
-// ★★★ FIX: Changed default from enabled: true to enabled: false ★★★
-struct InstantFrameConfig: Codable {
+struct InstantFrameConfig: Codable, Equatable {
     var enabled: Bool, type: String, borderColor: BorderColor, borderWidth: BorderWidth, texture: String, shadow: FrameShadow
     init(enabled: Bool = false, type: String = "polaroid_600", borderColor: BorderColor = BorderColor(),
          borderWidth: BorderWidth = BorderWidth(), texture: String = "matte", shadow: FrameShadow = FrameShadow()) {
@@ -259,7 +258,7 @@ struct InstantFrameConfig: Codable {
 }
 
 // MARK: - Skin Tone & Tone Mapping
-struct SkinToneProtection: Codable {
+struct SkinToneProtection: Codable, Equatable {
     var enabled: Bool, hueCenter: Float, hueRange: Float, satProtection: Float, warmthBoost: Float
     init(enabled: Bool = false, hueCenter: Float = 25, hueRange: Float = 30, satProtection: Float = 0.4, warmthBoost: Float = 0.03) {
         self.enabled = enabled; self.hueCenter = hueCenter; self.hueRange = hueRange
@@ -267,7 +266,7 @@ struct SkinToneProtection: Codable {
     }
 }
 
-struct ToneMapping: Codable {
+struct ToneMapping: Codable, Equatable {
     var enabled: Bool, method: String, whitePoint: Float, shoulderStrength: Float, linearStrength: Float, toeStrength: Float
     init(enabled: Bool = false, method: String = "filmic", whitePoint: Float = 1.0,
          shoulderStrength: Float = 0.2, linearStrength: Float = 0.3, toeStrength: Float = 0.2) {
@@ -276,7 +275,7 @@ struct ToneMapping: Codable {
     }
 }
 
-struct FilmStock: Codable {
+struct FilmStock: Codable, Equatable {
     var manufacturer: String, name: String, type: String, speed: Int, year: Int, characteristics: [String]
     init(manufacturer: String = "", name: String = "", type: String = "", speed: Int = 400, year: Int = 2000, characteristics: [String] = []) {
         self.manufacturer = manufacturer; self.name = name; self.type = type
@@ -286,7 +285,7 @@ struct FilmStock: Codable {
 
 // MARK: - FILTER PRESET (Root Object)
 
-struct FilterPreset: Codable, Identifiable {
+struct FilterPreset: Codable, Identifiable, Equatable {
     let id: String, label: String, category: FilterCategory
 
     var lutId: String?, lutFile: String?, lutIntensity: Float, colorSpace: String
