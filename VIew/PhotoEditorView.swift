@@ -1,6 +1,6 @@
 // PhotoEditorView.swift
 // Film Camera - Photo Editor with Filter Application
-// ★★★ FIXED: Race condition, slow loading, intermittent filter failures ★★★
+// ★★★ FIXED: Better debug logging, proper state updates, filter display ★★★
 
 import SwiftUI
 import PhotosUI
@@ -26,15 +26,18 @@ struct PhotoEditorView: View {
     // Compare slider position
     @State private var comparePosition: CGFloat = 0.5
     
-    // ★★★ FIX 1: Task cancellation to prevent race conditions ★★★
+    // Task cancellation to prevent race conditions
     @State private var currentFilterTask: Task<Void, Never>?
     
-    // ★★★ FIX 2: Separate preview and full-res images ★★★
-    @State private var previewImage: UIImage?  // Smaller for fast preview
-    @State private var fullResImage: UIImage?  // Original resolution
+    // Separate preview and full-res images
+    @State private var previewImage: UIImage?
+    @State private var fullResImage: UIImage?
     
-    // ★★★ FIX 3: Processing state with ID to track which filter is active ★★★
+    // Processing state with ID to track which filter is active
     @State private var processingPresetId: String?
+    
+    // ★★★ NEW: Debug state ★★★
+    @State private var lastFilterResult: String = ""
     
     var body: some View {
         NavigationView {
@@ -61,7 +64,6 @@ struct PhotoEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
-                        // ★ Cancel any pending task before dismissing
                         currentFilterTask?.cancel()
                         dismiss()
                     }
@@ -84,7 +86,7 @@ struct PhotoEditorView: View {
             loadImage(from: newItem)
         }
         .onChange(of: selectedPreset) { oldPreset, newPreset in
-            // ★★★ FIX: Debounced filter application with cancellation ★★★
+            print("🔄 PhotoEditor: Preset changed from '\(oldPreset.label)' to '\(newPreset.label)'")
             applyFilterDebounced(preset: newPreset)
         }
         .alert("Photo Saved", isPresented: $showSavedAlert) {
@@ -98,7 +100,6 @@ struct PhotoEditorView: View {
             Text(errorMessage)
         }
         .onDisappear {
-            // ★ Cleanup on view disappear
             currentFilterTask?.cancel()
         }
     }
@@ -117,12 +118,30 @@ struct PhotoEditorView: View {
                             position: $comparePosition
                         )
                     } else {
-                        // Single image view (filtered or original)
-                        Image(uiImage: filteredImage ?? original)
+                        // ★★★ FIX: Show filtered image if available, otherwise original ★★★
+                        let imageToShow = filteredImage ?? original
+                        Image(uiImage: imageToShow)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
+                    
+                    // ★★★ DEBUG: Show filter status overlay ★★★
+                    #if DEBUG
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Text(lastFilterResult)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.green)
+                                .padding(4)
+                                .background(.black.opacity(0.6))
+                                .cornerRadius(4)
+                            Spacer()
+                        }
+                        .padding(8)
+                    }
+                    #endif
                 } else {
                     // Photo picker prompt
                     photoPickerPrompt
@@ -292,10 +311,12 @@ struct PhotoEditorView: View {
         }
     }
     
-    // MARK: - ★★★ FIXED: Image Loading ★★★
+    // MARK: - Image Loading
     
     private func loadImage(from item: PhotosPickerItem?) {
         guard let item = item else { return }
+        
+        print("📷 PhotoEditor: Loading new image...")
         
         // Cancel any pending filter task
         currentFilterTask?.cancel()
@@ -303,24 +324,31 @@ struct PhotoEditorView: View {
         
         isProcessing = true
         filteredImage = nil
+        lastFilterResult = "Loading..."
         
         Task {
             do {
                 if let data = try await item.loadTransferable(type: Data.self),
                    let uiImage = UIImage(data: data) {
                     
-                    // ★★★ FIX: Create both preview and full-res versions ★★★
-                    let maxPreviewDimension: CGFloat = 1200  // Smaller for fast preview
-                    let maxFullResDimension: CGFloat = 3000  // Full quality for save
+                    print("✅ PhotoEditor: Image loaded: \(Int(uiImage.size.width))x\(Int(uiImage.size.height))")
+                    
+                    // Create both preview and full-res versions
+                    let maxPreviewDimension: CGFloat = 1200
+                    let maxFullResDimension: CGFloat = 3000
                     
                     let preview = uiImage.resizedIfNeeded(maxDimension: maxPreviewDimension)
                     let fullRes = uiImage.resizedIfNeeded(maxDimension: maxFullResDimension)
                     
+                    print("   Preview: \(Int(preview.size.width))x\(Int(preview.size.height))")
+                    print("   FullRes: \(Int(fullRes.size.width))x\(Int(fullRes.size.height))")
+                    
                     await MainActor.run {
                         self.previewImage = preview
                         self.fullResImage = fullRes
-                        self.originalImage = preview  // Show preview first
+                        self.originalImage = preview
                         self.isProcessing = false
+                        self.lastFilterResult = "Image loaded"
                         
                         // Apply current filter
                         applyFilterDebounced(preset: selectedPreset)
@@ -330,6 +358,7 @@ struct PhotoEditorView: View {
                         self.isProcessing = false
                         self.errorMessage = "Could not load the selected image."
                         self.showErrorAlert = true
+                        self.lastFilterResult = "Load failed"
                     }
                 }
             } catch {
@@ -337,26 +366,34 @@ struct PhotoEditorView: View {
                     self.isProcessing = false
                     self.errorMessage = "Error loading image: \(error.localizedDescription)"
                     self.showErrorAlert = true
+                    self.lastFilterResult = "Error: \(error.localizedDescription)"
                 }
             }
         }
     }
     
-    // MARK: - ★★★ FIXED: Filter Application with Cancellation ★★★
+    // MARK: - ★★★ FIXED: Filter Application ★★★
     
     private func applyFilterDebounced(preset: FilterPreset) {
         // Cancel any existing filter task
         currentFilterTask?.cancel()
         
-        guard let original = previewImage ?? originalImage else { return }
+        guard let original = previewImage ?? originalImage else {
+            print("⚠️ PhotoEditor: No image to filter")
+            lastFilterResult = "No image"
+            return
+        }
+        
+        print("🎨 PhotoEditor: Queuing filter '\(preset.label)'")
         
         // Track which preset is being processed
         processingPresetId = preset.id
+        lastFilterResult = "Processing \(preset.label)..."
         
         // Create new task with cancellation support
         currentFilterTask = Task { @MainActor in
             // Small delay to debounce rapid preset changes
-            try? await Task.sleep(nanoseconds: 50_000_000)  // 50ms debounce
+            try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms debounce
             
             // Check if cancelled
             guard !Task.isCancelled else {
@@ -370,15 +407,16 @@ struct PhotoEditorView: View {
                 return
             }
             
-            print("🎨 PhotoEditor: Applying filter '\(preset.label)'...")
+            print("🔄 PhotoEditor: Applying filter '\(preset.label)' to \(Int(original.size.width))x\(Int(original.size.height))")
             let startTime = CFAbsoluteTimeGetCurrent()
             
             // Process on background thread
-            let filtered = await withCheckedContinuation { continuation in
+            let filtered: UIImage? = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
-                    // ★★★ FIX: Check cancellation before heavy work ★★★
+                    // Check cancellation before heavy work
                     guard !Task.isCancelled else {
-                        continuation.resume(returning: nil as UIImage?)
+                        print("🚫 PhotoEditor: Cancelled before processing")
+                        continuation.resume(returning: nil)
                         return
                     }
                     
@@ -388,20 +426,30 @@ struct PhotoEditorView: View {
             }
             
             // Check if cancelled or preset changed
-            guard !Task.isCancelled, preset.id == selectedPreset.id else {
+            guard !Task.isCancelled else {
                 print("🚫 PhotoEditor: Filter task cancelled (after processing)")
                 return
             }
             
-            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-            print("✅ PhotoEditor: Filter applied in \(String(format: "%.2f", elapsed))s")
+            guard preset.id == selectedPreset.id else {
+                print("🚫 PhotoEditor: Preset changed during processing, discarding result")
+                return
+            }
             
-            // Update UI
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            
+            // ★★★ FIX: Always update the UI state ★★★
             if let filtered = filtered {
+                print("✅ PhotoEditor: Filter applied successfully in \(String(format: "%.2f", elapsed))s")
+                print("   Result size: \(Int(filtered.size.width))x\(Int(filtered.size.height))")
+                
                 self.filteredImage = filtered
+                self.lastFilterResult = "✓ \(preset.label) (\(String(format: "%.1f", elapsed))s)"
             } else {
-                print("⚠️ PhotoEditor: Filter returned nil, using original")
+                print("⚠️ PhotoEditor: Filter returned nil, showing original")
+                // ★★★ FIX: Set filteredImage to original so user sees something ★★★
                 self.filteredImage = original
+                self.lastFilterResult = "⚠️ Filter failed, showing original"
             }
             
             // Clear processing indicator
@@ -411,21 +459,24 @@ struct PhotoEditorView: View {
         }
     }
     
-    // MARK: - ★★★ FIXED: Save with Full Resolution ★★★
+    // MARK: - Save with Full Resolution
     
     private func savePhoto() {
-        // ★★★ FIX: Use full-res image for saving, apply filter at full res ★★★
         guard let fullRes = fullResImage ?? originalImage else { return }
         
+        print("💾 PhotoEditor: Saving photo...")
         isProcessing = true
         
         Task {
             // Apply filter to full resolution image
             let imageToSave: UIImage = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
+                    print("   Applying filter to full-res image...")
                     if let filtered = RenderEngine.shared.applyFilter(to: fullRes, preset: selectedPreset) {
+                        print("   ✅ Full-res filter applied")
                         continuation.resume(returning: filtered)
                     } else {
+                        print("   ⚠️ Full-res filter failed, using original")
                         continuation.resume(returning: fullRes)
                     }
                 }

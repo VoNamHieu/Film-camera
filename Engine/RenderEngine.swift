@@ -1,6 +1,6 @@
 // RenderEngine.swift
 // Film Camera - Core Metal Rendering Engine
-// ★★★ FIXED: Better error handling, debug logging, thread safety ★★★
+// ★★★ FIXED: Better error handling, debug logging, startup validation ★★★
 
 import Foundation
 import Metal
@@ -43,14 +43,18 @@ class RenderEngine {
     
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
-    private let lutCacheLock = NSLock()  // ★ Thread safety for LUT cache
+    private let lutCacheLock = NSLock()
     
-    // ★★★ NEW: Reusable FilterRenderer for photo processing ★★★
+    // Reusable FilterRenderer for photo processing
     private var photoFilterRenderer: FilterRenderer?
     private let filterRendererLock = NSLock()
     
-    // ★★★ NEW: Texture loader for thread-safe texture creation ★★★
+    // Texture loader for thread-safe texture creation
     private var textureLoader: MTKTextureLoader?
+    
+    // ★★★ NEW: Track initialization status ★★★
+    private(set) var isInitialized = false
+    private(set) var initializationErrors: [String] = []
     
     private init() {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -72,19 +76,29 @@ class RenderEngine {
         self.textureLoader = MTKTextureLoader(device: device)
         
         setupPipelines()
+        validatePipelines()
     }
     
     // MARK: - Pipeline Setup
     
     private func setupPipelines() {
         print("🎬 RenderEngine: Setting up Metal pipelines...")
+        print("   Device: \(device.name)")
 
         let vertexFunction = library.makeFunction(name: "vertexPassthrough")
         if vertexFunction == nil {
-            print("❌ RenderEngine: Failed to load vertexPassthrough function")
+            let error = "Failed to load vertexPassthrough function"
+            print("❌ RenderEngine: \(error)")
+            initializationErrors.append(error)
         } else {
             print("✅ RenderEngine: Loaded vertexPassthrough")
         }
+
+        // ★★★ List all available functions for debugging ★★★
+        #if DEBUG
+        print("📋 RenderEngine: Available Metal functions:")
+        // Note: Can't enumerate functions directly, but we'll see which ones fail
+        #endif
 
         // Core Pipelines
         colorGradingPipeline = createPipeline(vertex: vertexFunction, fragmentName: "colorGradingFragment")
@@ -117,7 +131,9 @@ class RenderEngine {
     
     private func createPipeline(vertex: MTLFunction?, fragmentName: String) -> MTLRenderPipelineState? {
         guard let fragmentFunction = library.makeFunction(name: fragmentName) else {
-            print("⚠️ RenderEngine: \(fragmentName) shader not found")
+            let error = "\(fragmentName) shader not found in Metal library"
+            print("⚠️ RenderEngine: \(error)")
+            initializationErrors.append(error)
             return nil
         }
         
@@ -131,7 +147,9 @@ class RenderEngine {
             print("✅ RenderEngine: \(fragmentName) pipeline created")
             return pipeline
         } catch {
-            print("❌ RenderEngine: Failed to create \(fragmentName) pipeline: \(error)")
+            let errorMsg = "Failed to create \(fragmentName) pipeline: \(error.localizedDescription)"
+            print("❌ RenderEngine: \(errorMsg)")
+            initializationErrors.append(errorMsg)
             return nil
         }
     }
@@ -140,11 +158,71 @@ class RenderEngine {
         return createPipeline(vertex: vertex, fragmentName: fragmentName)
     }
     
+    // ★★★ NEW: Validate critical pipelines ★★★
+    private func validatePipelines() {
+        var criticalMissing: [String] = []
+        
+        if colorGradingPipeline == nil {
+            criticalMissing.append("colorGrading")
+        }
+        if vignettePipeline == nil {
+            criticalMissing.append("vignette")
+        }
+        if grainPipeline == nil {
+            criticalMissing.append("grain")
+        }
+        if instantFramePipeline == nil {
+            criticalMissing.append("instantFrame")
+        }
+        if bloomPipeline == nil {
+            criticalMissing.append("bloom")
+        }
+        
+        if criticalMissing.isEmpty {
+            isInitialized = true
+            print("✅ RenderEngine: All critical pipelines initialized successfully")
+        } else {
+            isInitialized = false
+            print("❌ RenderEngine: CRITICAL - Missing pipelines: \(criticalMissing.joined(separator: ", "))")
+            print("   This will cause rendering failures!")
+        }
+    }
+    
     private func printPipelineStatus() {
-        print("🎬 RenderEngine: Pipeline setup complete")
-        print("   Core: colorGrading=\(colorGradingPipeline != nil), vignette=\(vignettePipeline != nil), grain=\(grainPipeline != nil)")
-        print("   Separable Bloom: threshold=\(bloomThresholdPipeline != nil), h=\(bloomHorizontalPipeline != nil), v=\(bloomVerticalPipeline != nil), composite=\(bloomCompositePipeline != nil)")
-        print("   Separable Halation: threshold=\(halationThresholdPipeline != nil), h=\(halationHorizontalPipeline != nil), v=\(halationVerticalPipeline != nil), composite=\(halationCompositePipeline != nil)")
+        print("═══════════════════════════════════════════════════════════════")
+        print("🎬 RenderEngine: Pipeline Status Summary")
+        print("═══════════════════════════════════════════════════════════════")
+        print("   Core Pipelines:")
+        print("      colorGrading:    \(colorGradingPipeline != nil ? "✅" : "❌")")
+        print("      vignette:        \(vignettePipeline != nil ? "✅" : "❌")")
+        print("      grain:           \(grainPipeline != nil ? "✅" : "❌")")
+        print("      instantFrame:    \(instantFramePipeline != nil ? "✅" : "❌")")
+        print("      lensDistortion:  \(lensDistortionPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Bloom Pipelines:")
+        print("      bloom (legacy):  \(bloomPipeline != nil ? "✅" : "❌")")
+        print("      bloomThreshold:  \(bloomThresholdPipeline != nil ? "✅" : "❌")")
+        print("      bloomHorizontal: \(bloomHorizontalPipeline != nil ? "✅" : "❌")")
+        print("      bloomVertical:   \(bloomVerticalPipeline != nil ? "✅" : "❌")")
+        print("      bloomComposite:  \(bloomCompositePipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Halation Pipelines:")
+        print("      halation (legacy): \(halationPipeline != nil ? "✅" : "❌")")
+        print("      halationThreshold: \(halationThresholdPipeline != nil ? "✅" : "❌")")
+        print("      halationHorizontal:\(halationHorizontalPipeline != nil ? "✅" : "❌")")
+        print("      halationVertical:  \(halationVerticalPipeline != nil ? "✅" : "❌")")
+        print("      halationComposite: \(halationCompositePipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Tone Mapping:")
+        print("      toneMapping:     \(toneMappingPipeline != nil ? "✅" : "❌")")
+        print("═══════════════════════════════════════════════════════════════")
+        
+        if !initializationErrors.isEmpty {
+            print("⚠️ Initialization Errors:")
+            for error in initializationErrors {
+                print("   - \(error)")
+            }
+        }
     }
     
     // MARK: - LUT Management (Thread-Safe)
@@ -206,7 +284,6 @@ class RenderEngine {
     
     /// Create a texture from CGImage (thread-safe)
     func makeTexture(from cgImage: CGImage) -> MTLTexture? {
-        // ★★★ FIX: Use MTKTextureLoader for thread-safe texture creation ★★★
         guard let loader = textureLoader else {
             print("❌ RenderEngine: TextureLoader not initialized")
             return nil
@@ -231,7 +308,14 @@ class RenderEngine {
     /// Thread-safe and includes comprehensive error handling
     func applyFilter(to image: UIImage, preset: FilterPreset) -> UIImage? {
         let startTime = CFAbsoluteTimeGetCurrent()
-        print("🎨 RenderEngine: Applying filter '\(preset.label)' to image (\(Int(image.size.width))x\(Int(image.size.height)))...")
+        print("🎨 RenderEngine.applyFilter: Starting for preset '\(preset.label)'")
+        print("   UIImage size: \(Int(image.size.width))x\(Int(image.size.height))")
+        
+        // ★★★ FIX: Check if engine is properly initialized ★★★
+        if !isInitialized {
+            print("❌ RenderEngine: Engine not properly initialized! Errors: \(initializationErrors)")
+            return nil
+        }
 
         // Step 1: Get CGImage
         guard let cgImage = image.cgImage else {
@@ -239,7 +323,7 @@ class RenderEngine {
             return nil
         }
         
-        print("   📐 CGImage: \(cgImage.width)x\(cgImage.height)")
+        print("   CGImage: \(cgImage.width)x\(cgImage.height), bpc: \(cgImage.bitsPerComponent)")
 
         // Step 2: Create input texture
         guard let inputTexture = makeTexture(from: cgImage) else {
@@ -247,7 +331,7 @@ class RenderEngine {
             return nil
         }
         
-        print("   ✅ Input texture created: \(inputTexture.width)x\(inputTexture.height)")
+        print("✅ Input texture: \(inputTexture.width)x\(inputTexture.height), format: \(inputTexture.pixelFormat.rawValue)")
 
         // Step 3: Create output texture (CPU-readable)
         guard let outputTexture = texturePool.readableTexture(
@@ -259,18 +343,19 @@ class RenderEngine {
             return nil
         }
         
-        print("   ✅ Output texture created")
+        print("✅ Output texture created")
 
         // Step 4: Get or create FilterRenderer (thread-safe)
         filterRendererLock.lock()
         if photoFilterRenderer == nil {
             photoFilterRenderer = FilterRenderer()
-            print("   🔧 Created new FilterRenderer for photo processing")
+            print("   Created new FilterRenderer for photo processing")
         }
         let renderer = photoFilterRenderer!
         filterRendererLock.unlock()
 
         // Step 5: Render with synchronous GPU wait
+        print("🔄 Starting renderSync...")
         let success = renderer.renderSync(
             input: inputTexture,
             output: outputTexture,
@@ -284,7 +369,7 @@ class RenderEngine {
             return nil
         }
         
-        print("   ✅ GPU rendering completed")
+        print("✅ GPU rendering completed")
 
         // Step 6: Convert texture back to CGImage
         guard let filteredCGImage = textureToCGImage(texture: outputTexture) else {
@@ -292,6 +377,8 @@ class RenderEngine {
             texturePool.recycle(outputTexture)
             return nil
         }
+        
+        print("✅ Converted to CGImage: \(filteredCGImage.width)x\(filteredCGImage.height)")
 
         // Step 7: Create UIImage with original orientation
         let filteredImage = UIImage(
@@ -304,7 +391,8 @@ class RenderEngine {
         texturePool.recycle(outputTexture)
         
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-        print("✅ RenderEngine: Filter applied successfully in \(String(format: "%.3f", elapsed))s")
+        print("✅ RenderEngine.applyFilter: Completed in \(String(format: "%.3f", elapsed))s")
+        print("   Result: \(Int(filteredImage.size.width))x\(Int(filteredImage.size.height))")
 
         return filteredImage
     }
@@ -376,6 +464,19 @@ class RenderEngine {
             print("   - \(name): \(texture.width)x\(texture.height)x\(texture.depth)")
         }
         lutCacheLock.unlock()
+    }
+    
+    func printStatus() {
+        print("")
+        print("═══════════════════════════════════════════════════════════════")
+        print("🔍 RenderEngine Status Report")
+        print("═══════════════════════════════════════════════════════════════")
+        print("   Initialized: \(isInitialized)")
+        print("   Device: \(device.name)")
+        printPoolStatistics()
+        printLUTCacheStatus()
+        print("═══════════════════════════════════════════════════════════════")
+        print("")
     }
     #endif
 }

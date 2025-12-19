@@ -1,6 +1,6 @@
 // FilterRenderer.swift
 // Film Camera - Core Filter Rendering Pipeline
-// ★★★ OPTIMIZED: Separate Preview (4 passes) vs Capture (full) pipelines ★★★
+// ★★★ FIXED V2: Proper scaling to drawable size - fixes black border issue ★★★
 
 import Foundation
 import Metal
@@ -14,6 +14,10 @@ class FilterRenderer {
     // Ping-pong buffers for proper texture management
     private var pingPongTextures: [MTLTexture?] = [nil, nil]
     private var pingPongIndex: Int = 0
+    
+    // ★★★ DEBUG: Frame counter for periodic logging ★★★
+    private var frameCount: Int = 0
+    private var lastLogTime: CFAbsoluteTime = 0
 
     init() {
         self.device = RenderEngine.shared.device
@@ -24,20 +28,26 @@ class FilterRenderer {
         renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     }
 
-    // MARK: - ★★★ OPTIMIZED: Preview Pipeline (4 passes, 60fps) ★★★
+    // MARK: - ★★★ FIXED V2: Preview Pipeline with Proper Scaling ★★★
     
     /// Lightweight preview rendering for live viewfinder
-    /// Only 4 passes: ColorGrading → Grain → Bloom(simple) → Vignette
+    /// Now includes: Scale → ColorGrading → Grain → Bloom(simple) → Vignette → InstantFrame
     func renderPreview(input: MTLTexture, drawable: CAMetalDrawable, preset: FilterPreset, commandQueue: MTLCommandQueue) {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            print("❌ FilterRenderer: Failed to create command buffer")
             return
         }
 
         let texturePool = RenderEngine.shared.texturePool
+        
+        // ★★★ FIX: Use DRAWABLE size for intermediate textures to prevent black borders ★★★
+        let outputWidth = drawable.texture.width
+        let outputHeight = drawable.texture.height
 
-        // Allocate ping-pong buffers at input resolution
-        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
-              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+        // Allocate ping-pong buffers at OUTPUT resolution (not input!)
+        guard let temp1 = texturePool.renderTargetTexture(width: outputWidth, height: outputHeight, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: outputWidth, height: outputHeight, pixelFormat: .bgra8Unorm) else {
+            print("❌ FilterRenderer: Failed to allocate intermediate textures")
             return
         }
 
@@ -45,21 +55,39 @@ class FilterRenderer {
         pingPongTextures[1] = temp2
         pingPongIndex = 0
 
-        var currentInput = input
+        var currentInput: MTLTexture = input
+        var passCount = 0
+        var failedPasses: [String] = []
 
         // ═══════════════════════════════════════════════════════════════
-        // PREVIEW PIPELINE: Only 4 passes for 60fps performance
+        // PREVIEW PIPELINE: Scale + 5 passes for good quality with decent performance
         // ═══════════════════════════════════════════════════════════════
+        
+        // ★★★ PASS 0: Scale input to drawable size (fixes black border) ★★★
+        if input.width != outputWidth || input.height != outputHeight {
+            if let scaled = scaleTexture(input: input, commandBuffer: commandBuffer) {
+                currentInput = scaled
+                passCount += 1
+            } else {
+                failedPasses.append("Scale")
+            }
+        }
 
         // PASS 1: Color Grading (includes LUT, curves, selective color)
         if let result = applyColorGrading(input: currentInput, preset: preset, commandBuffer: commandBuffer) {
             currentInput = result
+            passCount += 1
+        } else {
+            failedPasses.append("ColorGrading")
         }
 
         // PASS 2: Grain (lightweight)
         if preset.grain.enabled {
             if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
                 currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Grain")
             }
         }
 
@@ -67,6 +95,9 @@ class FilterRenderer {
         if preset.bloom.enabled {
             if let result = applyBloomSimplified(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Bloom")
             }
         }
 
@@ -74,18 +105,43 @@ class FilterRenderer {
         if preset.vignette.enabled {
             if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
                 currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Vignette")
+            }
+        }
+
+        // PASS 5: Instant Frame (for Polaroid/Instax look)
+        if preset.instantFrame.enabled {
+            if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("InstantFrame")
             }
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // SKIPPED FOR PREVIEW (applied only during capture):
-        // - Lens Distortion
-        // - Halation (4 passes)
-        // - Separable Bloom (use simplified instead)
-        // - Instant Frame
+        // DEBUG LOGGING (periodic, not every frame)
         // ═══════════════════════════════════════════════════════════════
+        frameCount += 1
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - lastLogTime >= 5.0 {  // Log every 5 seconds
+            if !failedPasses.isEmpty {
+                print("⚠️ FilterRenderer: Failed passes in last 5s: \(failedPasses.joined(separator: ", "))")
+            }
+            #if DEBUG
+            print("📊 FilterRenderer Preview: \(frameCount) frames in 5s, preset: \(preset.label)")
+            print("   Input: \(input.width)x\(input.height) → Drawable: \(outputWidth)x\(outputHeight)")
+            if preset.instantFrame.enabled {
+                print("   InstantFrame: enabled, border=\(preset.instantFrame.borderWidth)")
+            }
+            #endif
+            lastLogTime = now
+            frameCount = 0
+        }
 
-        // FINAL: Blit to drawable
+        // FINAL: Blit to drawable (now sizes match, no black borders!)
         blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
 
         // Recycle textures after GPU completes
@@ -97,12 +153,65 @@ class FilterRenderer {
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
+    
+    // MARK: - ★★★ NEW: Scale Texture Pass (for fixing black border) ★★★
+    
+    /// Scales input texture to match ping-pong buffer size using color grading shader as passthrough
+    private func scaleTexture(input: MTLTexture, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.colorGradingPipeline,
+              let output = getNextOutputTexture() else {
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        // Use neutral color grading params for passthrough
+        var params = ColorGradingParams()
+        params.exposure = 0.0
+        params.contrast = 1.0
+        params.highlights = 0.0
+        params.shadows = 0.0
+        params.whites = 0.0
+        params.blacks = 0.0
+        params.saturation = 1.0
+        params.vibrance = 0.0
+        params.temperature = 0.0
+        params.tint = 0.0
+        params.fade = 0.0
+        params.clarity = 0.0
+        params.shadowsHue = 0.0
+        params.shadowsSat = 0.0
+        params.highlightsHue = 0.0
+        params.highlightsSat = 0.0
+        params.splitBalance = 0.0
+        params.midtoneProtection = 0.5
+        params.selectiveColorCount = 0
+        params.lutIntensity = 0.0
+        params.useLUT = 0
+        
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
 
     // MARK: - ★★★ Simplified Bloom (Single Pass, Radius 8) ★★★
     
     private func applyBloomSimplified(input: MTLTexture, config: BloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         guard let pipeline = RenderEngine.shared.bloomPipeline,  // Use legacy single-pass
-              let output = getNextOutputTexture() else { return nil }
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.bloomPipeline == nil {
+                print("❌ FilterRenderer: bloomPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
 
         renderPassDescriptor.colorAttachments[0].texture = output
         guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
@@ -136,9 +245,13 @@ class FilterRenderer {
         }
 
         let texturePool = RenderEngine.shared.texturePool
+        
+        // ★★★ FIX: Use DRAWABLE size for intermediate textures ★★★
+        let outputWidth = drawable.texture.width
+        let outputHeight = drawable.texture.height
 
-        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
-              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+        guard let temp1 = texturePool.renderTargetTexture(width: outputWidth, height: outputHeight, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: outputWidth, height: outputHeight, pixelFormat: .bgra8Unorm) else {
             print("FilterRenderer: Failed to allocate intermediate textures")
             return
         }
@@ -147,12 +260,19 @@ class FilterRenderer {
         pingPongTextures[1] = temp2
         pingPongIndex = 0
 
-        var currentInput = input
+        var currentInput: MTLTexture = input
+        
+        // ★★★ Scale input to drawable size first ★★★
+        if input.width != outputWidth || input.height != outputHeight {
+            if let scaled = scaleTexture(input: input, commandBuffer: commandBuffer) {
+                currentInput = scaled
+            }
+        }
 
         // Execute FULL filter pipeline (13 passes)
         currentInput = executeFullPipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
 
-        // FINAL PASS: Blit to drawable
+        // FINAL PASS: Blit to drawable (sizes now match)
         blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
 
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
@@ -164,12 +284,15 @@ class FilterRenderer {
         commandBuffer.commit()
     }
 
-    // MARK: - ★★★ Synchronous Render (for photo capture) ★★★
+    // MARK: - ★★★ Synchronous Render (for photo capture) with Debug ★★★
     
     /// Render to texture SYNCHRONOUSLY with FULL quality pipeline
     func renderSync(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) -> Bool {
+        print("🔄 FilterRenderer.renderSync: Starting for preset '\(preset.label)'")
+        print("   Input: \(input.width)x\(input.height), Output: \(output.width)x\(output.height)")
+        
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            print("FilterRenderer: Failed to create command buffer")
+            print("❌ FilterRenderer: Failed to create command buffer")
             return false
         }
 
@@ -177,7 +300,7 @@ class FilterRenderer {
 
         guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
-            print("FilterRenderer: Failed to allocate intermediate textures")
+            print("❌ FilterRenderer: Failed to allocate intermediate textures")
             return false
         }
 
@@ -188,7 +311,9 @@ class FilterRenderer {
         var currentInput = input
 
         // Execute FULL pipeline for capture (all 13 passes)
+        let startTime = CFAbsoluteTimeGetCurrent()
         currentInput = executeFullPipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
+        print("   Pipeline setup time: \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startTime))s")
 
         // Final blit to output
         blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
@@ -206,6 +331,9 @@ class FilterRenderer {
 
         texturePool.recycle(temp1)
         texturePool.recycle(temp2)
+        
+        let totalTime = CFAbsoluteTimeGetCurrent() - startTime
+        print("✅ FilterRenderer.renderSync: Completed in \(String(format: "%.3f", totalTime))s")
         
         return true
     }
@@ -240,27 +368,37 @@ class FilterRenderer {
         commandBuffer.commit()
     }
 
-    // MARK: - Full Pipeline Execution (13 passes for capture)
+    // MARK: - Full Pipeline Execution (13 passes for capture) with Debug
     
     private func executeFullPipeline(input: MTLTexture, preset: FilterPreset, commandBuffer: MTLCommandBuffer) -> MTLTexture {
         var currentInput = input
+        var passResults: [String] = []
 
         // PASS 1: Lens Distortion
         if preset.lensDistortion.enabled {
             if let result = applyLensDistortion(input: currentInput, params: preset.lensDistortion, commandBuffer: commandBuffer) {
                 currentInput = result
+                passResults.append("LensDistortion✓")
+            } else {
+                passResults.append("LensDistortion✗")
             }
         }
 
         // PASS 2: Color Grading
         if let result = applyColorGrading(input: currentInput, preset: preset, commandBuffer: commandBuffer) {
             currentInput = result
+            passResults.append("ColorGrading✓")
+        } else {
+            passResults.append("ColorGrading✗")
         }
 
         // PASS 3: Grain
         if preset.grain.enabled {
             if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
                 currentInput = result
+                passResults.append("Grain✓")
+            } else {
+                passResults.append("Grain✗")
             }
         }
 
@@ -268,6 +406,9 @@ class FilterRenderer {
         if preset.bloom.enabled {
             if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
+                passResults.append("Bloom✓")
+            } else {
+                passResults.append("Bloom✗")
             }
         }
 
@@ -275,6 +416,9 @@ class FilterRenderer {
         if preset.vignette.enabled {
             if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
                 currentInput = result
+                passResults.append("Vignette✓")
+            } else {
+                passResults.append("Vignette✗")
             }
         }
 
@@ -282,6 +426,9 @@ class FilterRenderer {
         if preset.halation.enabled {
             if let result = applyHalationSeparable(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
                 currentInput = result
+                passResults.append("Halation✓")
+            } else {
+                passResults.append("Halation✗")
             }
         }
 
@@ -289,8 +436,15 @@ class FilterRenderer {
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
+                passResults.append("InstantFrame✓")
+            } else {
+                passResults.append("InstantFrame✗")
             }
         }
+
+        #if DEBUG
+        print("   Pipeline passes: \(passResults.joined(separator: " → "))")
+        #endif
 
         return currentInput
     }
@@ -332,7 +486,14 @@ class FilterRenderer {
 
     private func applyColorGrading(input: MTLTexture, preset: FilterPreset, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         guard let pipeline = RenderEngine.shared.colorGradingPipeline,
-              let output = getNextOutputTexture() else { return nil }
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.colorGradingPipeline == nil {
+                print("❌ FilterRenderer: colorGradingPipeline is nil! Check shader compilation.")
+            }
+            #endif
+            return nil
+        }
 
         renderPassDescriptor.colorAttachments[0].texture = output
         guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
@@ -537,7 +698,14 @@ class FilterRenderer {
 
     private func applyInstantFrame(input: MTLTexture, config: InstantFrameConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         guard let pipeline = RenderEngine.shared.instantFramePipeline,
-              let output = getNextOutputTexture() else { return nil }
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.instantFramePipeline == nil {
+                print("❌ FilterRenderer: instantFramePipeline is nil!")
+            }
+            #endif
+            return nil
+        }
 
         renderPassDescriptor.colorAttachments[0].texture = output
         guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
