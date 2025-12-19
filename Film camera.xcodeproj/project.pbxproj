@@ -11,13 +11,16 @@
 		04C280342EF28F89006E43C6 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280332EF28F83006E43C6 /* CameraPreviewView.swift */; };
 		04C2803D2EF2946B006E43C6 /* FilmPresets_Complete.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2803C2EF29457006E43C6 /* FilmPresets_Complete.swift */; };
 		04C280402EF29490006E43C6 /* TexturePool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2802B2EF28EFB006E43C6 /* TexturePool.swift */; };
-		04C280412EF29494006E43C6 /* FilterPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C2802A2EF28EF2006E43C6 /* FilterPipeline.swift */; };
 		04C280422EF29498006E43C6 /* RenderEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280292EF28EE5006E43C6 /* RenderEngine.swift */; };
 		04C280932EF2AFB6006E43C6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280922EF2AFB4006E43C6 /* Models.swift */; };
 		04C280A12EF3AEED006E43C6 /* LUTLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280A02EF3AEED006E43C6 /* LUTLoader.swift */; };
 		04C280A32EF3AEF1006E43C6 /* FilterRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280A22EF3AEF1006E43C6 /* FilterRenderer.swift */; };
 		04C280A52EF3AEFA006E43C6 /* CameraManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280A42EF3AEFA006E43C6 /* CameraManager.swift */; };
 		04C280A72EF3AF75006E43C6 /* MetalPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C280A62EF3AF75006E43C6 /* MetalPreviewView.swift */; };
+		04D5CB1E2EF500EA0081976E /* FilterPreset+RGBCurves.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D5CB1D2EF500EA0081976E /* FilterPreset+RGBCurves.swift */; };
+		04D5CB232EF500EE0081976E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D5CB202EF500EE0081976E /* ContentView.swift */; };
+		04D5CB242EF500EE0081976E /* RGBCurves.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D5CB1F2EF500EE0081976E /* RGBCurves.swift */; };
+		04D5CB252EF500EE0081976E /* PhotoEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D5CB212EF500EE0081976E /* PhotoEditorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,7 +28,6 @@
 		043960B22EF3BA0A00D764A0 /* Film-camera-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Film-camera-Bridging-Header.h"; sourceTree = "<group>"; };
 		04C2800D2EF28DAA006E43C6 /* Film camera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Film camera.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		04C280292EF28EE5006E43C6 /* RenderEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderEngine.swift; sourceTree = "<group>"; };
-		04C2802A2EF28EF2006E43C6 /* FilterPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterPipeline.swift; sourceTree = "<group>"; };
 		04C2802B2EF28EFB006E43C6 /* TexturePool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturePool.swift; sourceTree = "<group>"; };
 		04C280332EF28F83006E43C6 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
 		04C2803C2EF29457006E43C6 /* FilmPresets_Complete.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmPresets_Complete.swift; sourceTree = "<group>"; };
@@ -35,6 +37,10 @@
 		04C280A22EF3AEF1006E43C6 /* FilterRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterRenderer.swift; sourceTree = "<group>"; };
 		04C280A42EF3AEFA006E43C6 /* CameraManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraManager.swift; sourceTree = "<group>"; };
 		04C280A62EF3AF75006E43C6 /* MetalPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalPreviewView.swift; sourceTree = "<group>"; };
+		04D5CB1D2EF500EA0081976E /* FilterPreset+RGBCurves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FilterPreset+RGBCurves.swift"; sourceTree = "<group>"; };
+		04D5CB1F2EF500EE0081976E /* RGBCurves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RGBCurves.swift; sourceTree = "<group>"; };
+		04D5CB202EF500EE0081976E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		04D5CB212EF500EE0081976E /* PhotoEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoEditorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -92,6 +98,9 @@
 		04C280042EF28DAA006E43C6 = {
 			isa = PBXGroup;
 			children = (
+				04D5CB1F2EF500EE0081976E /* RGBCurves.swift */,
+				04D5CB1D2EF500EA0081976E /* FilterPreset+RGBCurves.swift */,
+				04D5CB222EF500EE0081976E /* VIew */,
 				043960B22EF3BA0A00D764A0 /* Film-camera-Bridging-Header.h */,
 				04C280922EF2AFB4006E43C6 /* Models.swift */,
 				04C280392EF28FD3006E43C6 /* Resources */,
@@ -117,7 +126,6 @@
 			children = (
 				04C280A22EF3AEF1006E43C6 /* FilterRenderer.swift */,
 				04C2802B2EF28EFB006E43C6 /* TexturePool.swift */,
-				04C2802A2EF28EF2006E43C6 /* FilterPipeline.swift */,
 				04C280292EF28EE5006E43C6 /* RenderEngine.swift */,
 				04C280A02EF3AEED006E43C6 /* LUTLoader.swift */,
 			);
@@ -157,6 +165,15 @@
 				04C2803B2EF28FE8006E43C6 /* LUTs */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		04D5CB222EF500EE0081976E /* VIew */ = {
+			isa = PBXGroup;
+			children = (
+				04D5CB202EF500EE0081976E /* ContentView.swift */,
+				04D5CB212EF500EE0081976E /* PhotoEditorView.swift */,
+			);
+			path = VIew;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -235,9 +252,12 @@
 			files = (
 				04C280A52EF3AEFA006E43C6 /* CameraManager.swift in Sources */,
 				04C280A12EF3AEED006E43C6 /* LUTLoader.swift in Sources */,
+				04D5CB1E2EF500EA0081976E /* FilterPreset+RGBCurves.swift in Sources */,
 				043960B12EF3B86800D764A0 /* Shaders.metal in Sources */,
-				04C280412EF29494006E43C6 /* FilterPipeline.swift in Sources */,
 				04C280A72EF3AF75006E43C6 /* MetalPreviewView.swift in Sources */,
+				04D5CB232EF500EE0081976E /* ContentView.swift in Sources */,
+				04D5CB242EF500EE0081976E /* RGBCurves.swift in Sources */,
+				04D5CB252EF500EE0081976E /* PhotoEditorView.swift in Sources */,
 				04C280342EF28F89006E43C6 /* CameraPreviewView.swift in Sources */,
 				04C280932EF2AFB6006E43C6 /* Models.swift in Sources */,
 				04C280422EF29498006E43C6 /* RenderEngine.swift in Sources */,
@@ -383,7 +403,7 @@
 				INFOPLIST_FILE = "Film-camera-Info.plist";
 				INFOPLIST_KEY_NSCameraUsageDescription = "App cần truy cập camera để chụp ảnh màu film.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Cho quyền lưu ảnh";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lấy ảnh";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lưu ảnh vào library";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -437,7 +457,7 @@
 				INFOPLIST_FILE = "Film-camera-Info.plist";
 				INFOPLIST_KEY_NSCameraUsageDescription = "App cần truy cập camera để chụp ảnh màu film.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Cho quyền lưu ảnh";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lấy ảnh";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lưu ảnh vào library";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

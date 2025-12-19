@@ -3,7 +3,7 @@
 //  Film camera
 //
 //  Created by mac on 17/12/25.
-//
+//  ★★★ UPDATED: Added RGB Curves support ★★★
 
 #ifndef ShaderTypes_h
 #define ShaderTypes_h
@@ -49,6 +49,26 @@ typedef struct {
     float scale;        // Zoom nhẹ để crop phần đen
 } LensDistortionParams;
 
+// ★★★ NEW: RGB CURVE POINT ★★★
+typedef struct {
+    float input;        // Input value (0.0 - 1.0)
+    float output;       // Output value (0.0 - 1.0)
+} CurvePoint;
+
+// ★★★ NEW: RGB CURVES DATA ★★★
+// Maximum 8 control points per channel (including endpoints)
+#define MAX_CURVE_POINTS 8
+
+typedef struct {
+    CurvePoint redCurve[MAX_CURVE_POINTS];
+    CurvePoint greenCurve[MAX_CURVE_POINTS];
+    CurvePoint blueCurve[MAX_CURVE_POINTS];
+    int redPointCount;
+    int greenPointCount;
+    int bluePointCount;
+    int enabled;
+} RGBCurvesParams;
+
 // 3. COLOR GRADING: Tổng hợp các tham số chỉnh màu
 typedef struct {
     float exposure;
@@ -79,6 +99,9 @@ typedef struct {
     // LUT
     float lutIntensity;
     int useLUT;
+    
+    // ★★★ NEW: RGB Curves ★★★
+    RGBCurvesParams rgbCurves;
 } ColorGradingParams;
 
 // 4. GRAIN: Hạt nhiễu giả lập film
@@ -127,5 +150,23 @@ typedef struct {
     float cornerDarkening;
     int enabled;
 } InstantFrameParams;
+
+// ★★★ NEW: SKIN TONE PROTECTION ★★★
+typedef struct {
+    int enabled;
+    float hueCenter;        // Center hue (degrees, typically 25 for skin)
+    float hueRange;         // Range around center (degrees)
+    float satProtection;    // How much to protect saturation (0-1)
+    float warmthBoost;      // Slight warmth addition (0-0.1)
+} SkinToneParams;
+
+// ★★★ NEW: TONE MAPPING ★★★
+typedef struct {
+    int enabled;
+    float whitePoint;
+    float shoulderStrength;
+    float linearStrength;
+    float toeStrength;
+} ToneMappingParams;
 
 #endif /* ShaderTypes_h */

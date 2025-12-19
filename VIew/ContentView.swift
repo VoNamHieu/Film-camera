@@ -1,9 +1,11 @@
 // ContentView.swift
 // Film Camera - Production Ready
+// ★★★ UPDATED: Added Photo Library integration ★★★
 
 import SwiftUI
 import AVFoundation
 import Photos
+import PhotosUI
 
 struct ContentView: View {
     @StateObject private var cameraManager = CameraManager()
@@ -12,6 +14,11 @@ struct ContentView: View {
     @State private var showPresetPicker = false
     @State private var showSavedAlert = false
     @State private var isCapturing = false
+    
+    // ★★★ NEW: Photo Library states ★★★
+    @State private var showPhotoEditor = false
+    @State private var lastCapturedImage: UIImage?
+    @State private var showLastPhoto = false
     
     var body: some View {
         ZStack {
@@ -43,6 +50,16 @@ struct ContentView: View {
         } message: {
             Text("Your photo has been saved to the camera roll.")
         }
+        // ★★★ NEW: Photo Editor Sheet ★★★
+        .fullScreenCover(isPresented: $showPhotoEditor) {
+            PhotoEditorView()
+        }
+        // ★★★ NEW: Last Photo Preview Sheet ★★★
+        .sheet(isPresented: $showLastPhoto) {
+            if let image = lastCapturedImage {
+                LastPhotoPreviewView(image: image, onDismiss: { showLastPhoto = false })
+            }
+        }
     }
     
     // MARK: - Camera Content View
@@ -62,6 +79,11 @@ struct ContentView: View {
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(1.5)
                     )
+            }
+            
+            // ★★★ NEW: Session Interruption overlay ★★★
+            if cameraManager.isInterrupted {
+                sessionInterruptedOverlay
             }
             
             // UI Overlay
@@ -94,6 +116,33 @@ struct ContentView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+    }
+    
+    // ★★★ NEW: Session Interrupted Overlay ★★★
+    private var sessionInterruptedOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.8)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 16) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 48))
+                    .foregroundColor(.white.opacity(0.6))
+                
+                Text("Camera Interrupted")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                
+                if let error = cameraManager.error {
+                    Text(error.localizedDescription)
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+            }
         }
     }
     
@@ -233,16 +282,26 @@ struct ContentView: View {
     
     private var captureControlsBar: some View {
         HStack(spacing: 50) {
-            // Gallery button (placeholder)
-            Button(action: { openPhotoLibrary() }) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.white.opacity(0.15))
-                    .frame(width: 48, height: 48)
-                    .overlay(
+            // ★★★ UPDATED: Gallery button now opens Photo Editor ★★★
+            Button(action: { showPhotoEditor = true }) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(.white.opacity(0.15))
+                        .frame(width: 48, height: 48)
+                    
+                    // Show last captured photo thumbnail if available
+                    if let lastImage = lastCapturedImage {
+                        Image(uiImage: lastImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 48, height: 48)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
                         Image(systemName: "photo.on.rectangle")
                             .font(.system(size: 20))
                             .foregroundColor(.white)
-                    )
+                    }
+                }
             }
             
             // Capture Button
@@ -258,7 +317,7 @@ struct ContentView: View {
                         .scaleEffect(isCapturing ? 0.9 : 1.0)
                 }
             }
-            .disabled(isCapturing || !cameraManager.isSessionRunning)
+            .disabled(isCapturing || !cameraManager.isSessionRunning || cameraManager.isInterrupted)
             
             // Flip Camera
             Button(action: { cameraManager.switchCamera() }) {
@@ -293,6 +352,8 @@ struct ContentView: View {
             }
 
             if let image = image {
+                // ★★★ NEW: Store last captured image for thumbnail ★★★
+                lastCapturedImage = image
                 saveToPhotoLibrary(image)
             }
         }
@@ -315,10 +376,58 @@ struct ContentView: View {
             }
         }
     }
+}
+
+// MARK: - Last Photo Preview View
+
+struct LastPhotoPreviewView: View {
+    let image: UIImage
+    var onDismiss: () -> Void
     
-    private func openPhotoLibrary() {
-        // Placeholder - implement photo library picker
+    @State private var showShareSheet = false
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            }
+            .navigationTitle("Last Photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") { onDismiss() }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showShareSheet = true }) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+            }
+            .toolbarBackground(.black, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: [image])
+        }
     }
+}
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Permission Request View

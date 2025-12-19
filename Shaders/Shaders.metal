@@ -99,6 +99,76 @@ float gaussianWeight(float x, float sigma) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: RGB CURVES FUNCTIONS ★★★
+// ═══════════════════════════════════════════════════════════════
+
+// Evaluate a single curve at input value using linear interpolation
+// between control points. Uses Catmull-Rom spline for smoothness.
+float evaluateCurve(float input, constant CurvePoint* curve, int pointCount) {
+    if (pointCount <= 0) return input;
+    if (pointCount == 1) return curve[0].output;
+    
+    // Clamp input to valid range
+    input = saturate(input);
+    
+    // Find the two points to interpolate between
+    int idx = 0;
+    for (int i = 0; i < pointCount - 1; i++) {
+        if (input >= curve[i].input && input <= curve[i + 1].input) {
+            idx = i;
+            break;
+        }
+        if (i == pointCount - 2) {
+            idx = i; // Fallback to last segment
+        }
+    }
+    
+    // Get the four control points for Catmull-Rom (or use endpoints)
+    float2 p0 = float2(curve[max(0, idx - 1)].input, curve[max(0, idx - 1)].output);
+    float2 p1 = float2(curve[idx].input, curve[idx].output);
+    float2 p2 = float2(curve[min(idx + 1, pointCount - 1)].input, curve[min(idx + 1, pointCount - 1)].output);
+    float2 p3 = float2(curve[min(idx + 2, pointCount - 1)].input, curve[min(idx + 2, pointCount - 1)].output);
+    
+    // Calculate t parameter (0-1 within this segment)
+    float segmentWidth = p2.x - p1.x;
+    float t = (segmentWidth > 0.0001) ? (input - p1.x) / segmentWidth : 0.0;
+    t = saturate(t);
+    
+    // Catmull-Rom spline interpolation
+    float t2 = t * t;
+    float t3 = t2 * t;
+    
+    float output = 0.5 * (
+        (2.0 * p1.y) +
+        (-p0.y + p2.y) * t +
+        (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2 +
+        (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3
+    );
+    
+    return saturate(output);
+}
+
+// Apply RGB curves to a color
+float3 applyRGBCurves(float3 color, constant RGBCurvesParams& curves) {
+    if (curves.enabled == 0) return color;
+    
+    float3 result = color;
+    
+    // Apply each channel curve
+    if (curves.redPointCount > 0) {
+        result.r = evaluateCurve(color.r, curves.redCurve, curves.redPointCount);
+    }
+    if (curves.greenPointCount > 0) {
+        result.g = evaluateCurve(color.g, curves.greenCurve, curves.greenPointCount);
+    }
+    if (curves.bluePointCount > 0) {
+        result.b = evaluateCurve(color.b, curves.blueCurve, curves.bluePointCount);
+    }
+    
+    return result;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 1. LENS DISTORTION SHADER (Disposable Camera Effect)
 // ═══════════════════════════════════════════════════════════════
 
@@ -130,7 +200,7 @@ fragment float4 lensDistortionFragment(VertexOut in [[stage_in]],
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 2. COLOR GRADING SHADER (Core Engine)
+// 2. COLOR GRADING SHADER (Core Engine) ★★★ WITH RGB CURVES ★★★
 // ═══════════════════════════════════════════════════════════════
 
 fragment float4 colorGradingFragment(
@@ -164,7 +234,10 @@ fragment float4 colorGradingFragment(
     rgb.b -= p.temperature * 0.1;
     rgb.g += p.tint * 0.05;
 
-    // === 2. SELECTIVE COLOR (Fixed hue normalization) ===
+    // === 2. ★★★ RGB CURVES (NEW) ★★★ ===
+    rgb = applyRGBCurves(rgb, p.rgbCurves);
+
+    // === 3. SELECTIVE COLOR (Fixed hue normalization) ===
     if (p.selectiveColorCount > 0) {
         float3 hsl = rgb2hsl(rgb);
 
@@ -195,7 +268,7 @@ fragment float4 colorGradingFragment(
         rgb = hsl2rgb(hsl);
     }
 
-    // === 3. SATURATION & VIBRANCE ===
+    // === 4. SATURATION & VIBRANCE ===
     luma = luminance(rgb);
     rgb = mix(float3(luma), rgb, 1.0 + p.saturation);
 
@@ -204,21 +277,21 @@ fragment float4 colorGradingFragment(
     float colorfulness = maxChannel - minChannel;
     rgb = mix(float3(luma), rgb, 1.0 + p.vibrance * (1.0 - colorfulness));
 
-    // === 4. LUT LOOKUP ===
+    // === 5. LUT LOOKUP ===
     if (p.useLUT > 0 && p.lutIntensity > 0) {
         float3 lutCoord = saturate(rgb);
         float3 lutColor = lutTexture.sample(lutSampler, lutCoord).rgb;
         rgb = mix(rgb, lutColor, p.lutIntensity);
     }
 
-    // === 5. FADE & CLARITY ===
+    // === 6. FADE & CLARITY ===
     rgb = mix(rgb, float3(1.0), p.fade * (1.0 - rgb) * 0.15);
 
     if (abs(p.clarity) > 0.001) {
         rgb += (luma - 0.5) * p.clarity * 0.5;
     }
 
-    // === 6. SPLIT TONING ===
+    // === 7. SPLIT TONING ===
     if (p.shadowsSat > 0 || p.highlightsSat > 0) {
         float3 shadowTint = hueToRGB(p.shadowsHue / 360.0);
         float3 highlightTint = hueToRGB(p.highlightsHue / 360.0);
@@ -317,8 +390,9 @@ fragment float4 bloomHorizontalFragment(
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     
     float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
-    int radius = int(p.radius);
-    float sigma = p.radius / 3.0;
+    // ★ FIX: Cap radius for performance
+    int radius = min(int(p.radius), 20);
+    float sigma = float(radius) / 3.0;
     
     float3 result = float3(0.0);
     float totalWeight = 0.0;
@@ -344,8 +418,9 @@ fragment float4 bloomVerticalFragment(
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     
     float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
-    int radius = int(p.radius);
-    float sigma = p.radius / 3.0;
+    // ★ FIX: Cap radius for performance
+    int radius = min(int(p.radius), 20);
+    float sigma = float(radius) / 3.0;
     
     float3 result = float3(0.0);
     float totalWeight = 0.0;
@@ -400,7 +475,7 @@ fragment float4 bloomFragment(
     // ⚠️ Legacy nested loop - use separable pipeline instead!
     float3 bloom = float3(0.0);
     float totalWeight = 0.0;
-    int radius = int(p.radius);
+    int radius = min(int(p.radius), 15);  // ★ Cap for performance
     float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
 
     for (int x = -radius; x <= radius; x+=2) {
@@ -465,8 +540,9 @@ fragment float4 halationHorizontalFragment(
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     
     float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
-    int radius = int(p.radius);
-    float sigma = p.radius / 2.5;  // Wider spread for halation
+    // ★ FIX: Cap radius for performance
+    int radius = min(int(p.radius), 25);
+    float sigma = float(radius) / 2.5;  // Wider spread for halation
     
     float3 result = float3(0.0);
     float totalWeight = 0.0;
@@ -491,8 +567,9 @@ fragment float4 halationVerticalFragment(
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     
     float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
-    int radius = int(p.radius);
-    float sigma = p.radius / 2.5;
+    // ★ FIX: Cap radius for performance
+    int radius = min(int(p.radius), 25);
+    float sigma = float(radius) / 2.5;
     
     float3 result = float3(0.0);
     float totalWeight = 0.0;
@@ -549,7 +626,7 @@ fragment float4 halationFragment(
     // ⚠️ Legacy nested loop - use separable pipeline instead!
     float3 halo = float3(0.0);
     float totalWeight = 0.0;
-    int radius = int(p.radius);
+    int radius = min(int(p.radius), 20);  // ★ Cap for performance
     float2 texelSize = 1.0 / float2(inputTexture.get_width(), inputTexture.get_height());
 
     for (int x = -radius; x <= radius; x+=3) {
@@ -671,26 +748,74 @@ float3 filmicToneMap(float3 x, float A, float B, float C, float D, float E, floa
 fragment float4 toneMappingFragment(
     VertexOut in [[stage_in]],
     texture2d<float> inputTexture [[texture(0)]],
-    constant float4 &params [[buffer(0)]]  // x=whitePoint, y=shoulder, z=linear, w=toe
+    constant ToneMappingParams &params [[buffer(0)]]
 ) {
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     float4 color = inputTexture.sample(s, in.texCoord);
     
+    if (params.enabled == 0) return color;
+    
     float3 rgb = srgbToLinear3(color.rgb);
     
     // Filmic parameters
-    float A = params.y;  // shoulderStrength
-    float B = params.z;  // linearStrength
+    float A = params.shoulderStrength;
+    float B = params.linearStrength;
     float C = 0.10;      // linearAngle
-    float D = params.w;  // toeStrength
+    float D = params.toeStrength;
     float E = 0.01;      // toeNumerator
     float F = 0.30;      // toeDenominator
-    float W = params.x;  // whitePoint
+    float W = params.whitePoint;
     
     float3 whiteScale = 1.0 / filmicToneMap(float3(W), A, B, C, D, E, F);
     rgb = filmicToneMap(rgb, A, B, C, D, E, F) * whiteScale;
     
     rgb = linearToSrgb3(saturate(rgb));
+    
+    return float4(rgb, color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: SKIN TONE PROTECTION SHADER ★★★
+// ═══════════════════════════════════════════════════════════════
+
+fragment float4 skinToneProtectionFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant SkinToneParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+    
+    if (p.enabled == 0) return color;
+    
+    float3 rgb = color.rgb;
+    float3 hsl = rgb2hsl(rgb);
+    
+    // Calculate distance from skin tone center
+    float hueCenter = p.hueCenter / 360.0;  // Convert to 0-1
+    float hueRange = p.hueRange / 360.0;
+    
+    float hueDist = abs(hsl.x - hueCenter);
+    if (hueDist > 0.5) hueDist = 1.0 - hueDist;  // Handle wrap-around
+    
+    // Create smooth mask for skin tones
+    float skinMask = 1.0 - smoothstep(0.0, hueRange, hueDist);
+    
+    // Also check saturation (skin is typically medium saturation)
+    float satMask = smoothstep(0.1, 0.3, hsl.y) * (1.0 - smoothstep(0.5, 0.8, hsl.y));
+    skinMask *= satMask;
+    
+    if (skinMask > 0.0) {
+        // Protect saturation (don't over-saturate skin)
+        float satProtection = mix(1.0, 0.85, p.satProtection * skinMask);
+        hsl.y *= satProtection;
+        
+        // Add slight warmth boost
+        hsl.x += p.warmthBoost * skinMask * 0.02;
+        if (hsl.x > 1.0) hsl.x -= 1.0;
+        
+        rgb = hsl2rgb(hsl);
+    }
     
     return float4(rgb, color.a);
 }

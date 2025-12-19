@@ -60,7 +60,7 @@ struct CameraPreviewView: UIViewRepresentable {
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
             switch gesture.state {
             case .began:
-                initialZoomFactor = gesture.scale
+                initialZoomFactor = cameraManager.getCurrentZoomFactor() 
             case .changed:
                 let newZoomFactor = initialZoomFactor * gesture.scale
                 cameraManager.setZoom(newZoomFactor)
