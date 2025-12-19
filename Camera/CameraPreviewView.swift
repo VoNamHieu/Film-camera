@@ -1,5 +1,6 @@
 // CameraPreviewView.swift
 // Film Camera - Production Ready Camera Preview
+// ★★★ FIXED: focus parameter, getCurrentZoomFactor, iOS 26 deprecation ★★★
 
 import SwiftUI
 import AVFoundation
@@ -53,14 +54,16 @@ struct CameraPreviewView: UIViewRepresentable {
             let location = gesture.location(in: previewView)
             let focusPoint = previewView.videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: location)
             
-            cameraManager.focus(at: focusPoint)
+            // ★★★ FIX: Pass the view parameter to focus method ★★★
+            cameraManager.focus(at: focusPoint, in: previewView)
             showFocusAnimation(at: location, in: previewView)
         }
         
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
             switch gesture.state {
             case .began:
-                initialZoomFactor = cameraManager.getCurrentZoomFactor() 
+                // ★★★ FIX: Use property instead of method ★★★
+                initialZoomFactor = cameraManager.currentZoomFactor
             case .changed:
                 let newZoomFactor = initialZoomFactor * gesture.scale
                 cameraManager.setZoom(newZoomFactor)
@@ -154,24 +157,60 @@ final class CameraPreviewUIView: UIView {
     private func updateOrientation(for connection: AVCaptureConnection) {
         guard connection.isVideoRotationAngleSupported(0) else { return }
         
-        let interfaceOrientation = window?.windowScene?.interfaceOrientation ?? .portrait
-        
+        // ★★★ FIX: Use new API for iOS 26+ ★★★
         let rotationAngle: CGFloat
-        switch interfaceOrientation {
-        case .portrait:
-            rotationAngle = 90
-        case .portraitUpsideDown:
-            rotationAngle = 270
-        case .landscapeLeft:
-            rotationAngle = 180
-        case .landscapeRight:
-            rotationAngle = 0
-        @unknown default:
-            rotationAngle = 90
+        
+        #if compiler(>=6.0)
+        // iOS 26+ uses effectiveGeometry
+        if #available(iOS 26.0, *) {
+            // Use trait collection or scene-based approach
+            if let windowScene = window?.windowScene {
+                let orientation = windowScene.effectiveGeometry.interfaceOrientation
+                switch orientation {
+                case .portrait:
+                    rotationAngle = 90
+                case .portraitUpsideDown:
+                    rotationAngle = 270
+                case .landscapeLeft:
+                    rotationAngle = 180
+                case .landscapeRight:
+                    rotationAngle = 0
+                @unknown default:
+                    rotationAngle = 90
+                }
+            } else {
+                rotationAngle = 90
+            }
+        } else {
+            // Fallback for older iOS
+            rotationAngle = getRotationAngleFromWindowScene()
         }
+        #else
+        rotationAngle = getRotationAngleFromWindowScene()
+        #endif
         
         if connection.isVideoRotationAngleSupported(rotationAngle) {
             connection.videoRotationAngle = rotationAngle
+        }
+    }
+    
+    /// Get rotation angle from window scene (works on iOS 16+)
+    private func getRotationAngleFromWindowScene() -> CGFloat {
+        guard let windowScene = window?.windowScene else { return 90 }
+        
+        let interfaceOrientation = windowScene.interfaceOrientation
+        
+        switch interfaceOrientation {
+        case .portrait:
+            return 90
+        case .portraitUpsideDown:
+            return 270
+        case .landscapeLeft:
+            return 180
+        case .landscapeRight:
+            return 0
+        @unknown default:
+            return 90
         }
     }
 }

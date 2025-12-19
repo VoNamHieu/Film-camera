@@ -1,11 +1,22 @@
 // CameraManager.swift
 // Film Camera - Camera Session and Photo Capture Manager
-// ★★★ OPTIMIZED: Full quality capture pipeline (13 passes) ★★★
+// ★★★ COMPLETE: All required properties and methods ★★★
 
 import AVFoundation
 import UIKit
 import Photos
 import Metal
+
+// MARK: - Permission Status Enum
+
+enum CameraPermissionStatus {
+    case notDetermined
+    case authorized
+    case denied
+    case restricted
+}
+
+// MARK: - Camera Manager
 
 class CameraManager: NSObject, ObservableObject {
     
@@ -18,6 +29,11 @@ class CameraManager: NSObject, ObservableObject {
     @Published var lastCapturedImage: UIImage?
     @Published var flashMode: AVCaptureDevice.FlashMode = .off
     @Published var exposureCompensation: Float = 0.0
+    
+    // ★★★ NEW: Permission and error handling ★★★
+    @Published var permissionStatus: CameraPermissionStatus = .notDetermined
+    @Published var isInterrupted = false
+    @Published var error: Error?
     
     // MARK: - Session
     
@@ -39,7 +55,104 @@ class CameraManager: NSObject, ObservableObject {
     
     override init() {
         super.init()
-        setupSession()
+        setupNotifications()
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    // MARK: - ★★★ Permission Handling ★★★
+    
+    func checkPermissionStatus() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        
+        DispatchQueue.main.async { [weak self] in
+            switch status {
+            case .notDetermined:
+                self?.permissionStatus = .notDetermined
+            case .authorized:
+                self?.permissionStatus = .authorized
+                self?.setupSession()
+            case .denied:
+                self?.permissionStatus = .denied
+            case .restricted:
+                self?.permissionStatus = .restricted
+            @unknown default:
+                self?.permissionStatus = .denied
+            }
+        }
+    }
+    
+    func requestPermission() {
+        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+            DispatchQueue.main.async {
+                if granted {
+                    self?.permissionStatus = .authorized
+                    self?.setupSession()
+                } else {
+                    self?.permissionStatus = .denied
+                }
+            }
+        }
+    }
+    
+    // MARK: - ★★★ Session Interruption Notifications ★★★
+    
+    private func setupNotifications() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionWasInterrupted),
+            name: .AVCaptureSessionWasInterrupted,
+            object: session
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionInterruptionEnded),
+            name: .AVCaptureSessionInterruptionEnded,
+            object: session
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionRuntimeError),
+            name: .AVCaptureSessionRuntimeError,
+            object: session
+        )
+    }
+    
+    @objc private func sessionWasInterrupted(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isInterrupted = true
+            
+            if let reason = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int,
+               let interruptionReason = AVCaptureSession.InterruptionReason(rawValue: reason) {
+                print("⚠️ CameraManager: Session interrupted - \(interruptionReason)")
+            }
+        }
+    }
+    
+    @objc private func sessionInterruptionEnded(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isInterrupted = false
+            self?.error = nil
+            print("✅ CameraManager: Session interruption ended")
+        }
+    }
+    
+    @objc private func sessionRuntimeError(_ notification: Notification) {
+        guard let errorValue = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError else { return }
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.error = errorValue
+            print("❌ CameraManager: Runtime error - \(errorValue.localizedDescription)")
+        }
+        
+        // Try to restart session
+        sessionQueue.async { [weak self] in
+            self?.session.startRunning()
+        }
     }
     
     // MARK: - Session Setup
@@ -165,6 +278,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
+    // ★★★ FIXED: focus method with correct signature ★★★
     func focus(at point: CGPoint, in view: UIView) {
         guard let device = videoDeviceInput?.device,
               device.isFocusPointOfInterestSupported else { return }
@@ -185,9 +299,24 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
+    // ★★★ NEW: Toggle Flash ★★★
+    func toggleFlash() {
+        switch flashMode {
+        case .off:
+            flashMode = .on
+        case .on:
+            flashMode = .auto
+        case .auto:
+            flashMode = .off
+        @unknown default:
+            flashMode = .off
+        }
+        print("🔦 CameraManager: Flash mode set to \(flashMode)")
+    }
+    
     // MARK: - ★★★ Photo Capture with FULL Quality Pipeline ★★★
     
-    func capturePhoto(with preset: FilterPreset, completion: @escaping (UIImage?) -> Void) {
+    func capturePhoto(preset: FilterPreset, completion: @escaping (UIImage?) -> Void) {
         guard let photoOutput = photoOutput else {
             print("❌ CameraManager: Photo output not available")
             completion(nil)
