@@ -1,6 +1,6 @@
 // RenderEngine.swift
 // Film Camera - Core Metal Rendering Engine
-// ★★★ FIXED: GPU synchronization in applyFilter() ★★★
+// ★★★ FIXED: Better error handling, debug logging, thread safety ★★★
 
 import Foundation
 import Metal
@@ -43,6 +43,14 @@ class RenderEngine {
     
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
+    private let lutCacheLock = NSLock()  // ★ Thread safety for LUT cache
+    
+    // ★★★ NEW: Reusable FilterRenderer for photo processing ★★★
+    private var photoFilterRenderer: FilterRenderer?
+    private let filterRendererLock = NSLock()
+    
+    // ★★★ NEW: Texture loader for thread-safe texture creation ★★★
+    private var textureLoader: MTKTextureLoader?
     
     private init() {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -61,6 +69,7 @@ class RenderEngine {
         self.library = library
         
         self.texturePool = TexturePool(device: device)
+        self.textureLoader = MTKTextureLoader(device: device)
         
         setupPipelines()
     }
@@ -138,23 +147,31 @@ class RenderEngine {
         print("   Separable Halation: threshold=\(halationThresholdPipeline != nil), h=\(halationHorizontalPipeline != nil), v=\(halationVerticalPipeline != nil), composite=\(halationCompositePipeline != nil)")
     }
     
-    // MARK: - LUT Management
+    // MARK: - LUT Management (Thread-Safe)
     
     func loadLUT(named filename: String) -> MTLTexture? {
+        lutCacheLock.lock()
+        defer { lutCacheLock.unlock() }
+        
         if let cached = lutCache[filename] {
             return cached
         }
         
         guard let texture = LUTLoader.load(filename: filename, device: device) else {
+            print("⚠️ RenderEngine: Failed to load LUT: \(filename)")
             return nil
         }
         
         lutCache[filename] = texture
+        print("✅ RenderEngine: LUT loaded and cached: \(filename)")
         return texture
     }
     
     func clearLUTCache() {
+        lutCacheLock.lock()
         lutCache.removeAll()
+        lutCacheLock.unlock()
+        print("🧹 RenderEngine: LUT cache cleared")
     }
     
     // MARK: - Rendering
@@ -187,34 +204,52 @@ class RenderEngine {
         commandBuffer.commit()
     }
     
-    /// Create a texture from CGImage
+    /// Create a texture from CGImage (thread-safe)
     func makeTexture(from cgImage: CGImage) -> MTLTexture? {
-        let loader = MTKTextureLoader(device: device)
-        return try? loader.newTexture(cgImage: cgImage, options: [
-            .SRGB: false,
-            .generateMipmaps: false
-        ])
+        // ★★★ FIX: Use MTKTextureLoader for thread-safe texture creation ★★★
+        guard let loader = textureLoader else {
+            print("❌ RenderEngine: TextureLoader not initialized")
+            return nil
+        }
+        
+        do {
+            let texture = try loader.newTexture(cgImage: cgImage, options: [
+                .SRGB: false,
+                .generateMipmaps: false,
+                .textureUsage: NSNumber(value: MTLTextureUsage.shaderRead.rawValue)
+            ])
+            return texture
+        } catch {
+            print("❌ RenderEngine: Failed to create texture from CGImage: \(error.localizedDescription)")
+            return nil
+        }
     }
 
-    // MARK: - Photo Filtering
+    // MARK: - ★★★ FIXED: Photo Filtering with Better Error Handling ★★★
     
-    // ★★★ FIXED: GPU Synchronization ★★★
     /// Apply filter to UIImage and return filtered UIImage
+    /// Thread-safe and includes comprehensive error handling
     func applyFilter(to image: UIImage, preset: FilterPreset) -> UIImage? {
-        print("🎨 RenderEngine: Applying filter to captured photo...")
+        let startTime = CFAbsoluteTimeGetCurrent()
+        print("🎨 RenderEngine: Applying filter '\(preset.label)' to image (\(Int(image.size.width))x\(Int(image.size.height)))...")
 
+        // Step 1: Get CGImage
         guard let cgImage = image.cgImage else {
             print("❌ RenderEngine: Failed to get CGImage from UIImage")
             return nil
         }
+        
+        print("   📐 CGImage: \(cgImage.width)x\(cgImage.height)")
 
-        // Convert UIImage → MTLTexture
+        // Step 2: Create input texture
         guard let inputTexture = makeTexture(from: cgImage) else {
             print("❌ RenderEngine: Failed to create input texture")
             return nil
         }
+        
+        print("   ✅ Input texture created: \(inputTexture.width)x\(inputTexture.height)")
 
-        // Use readable texture for CPU access
+        // Step 3: Create output texture (CPU-readable)
         guard let outputTexture = texturePool.readableTexture(
             width: inputTexture.width,
             height: inputTexture.height,
@@ -223,12 +258,20 @@ class RenderEngine {
             print("❌ RenderEngine: Failed to create output texture")
             return nil
         }
-
-        // ★★★ FIX: Use synchronous rendering with proper GPU wait ★★★
-        let filterRenderer = FilterRenderer()
         
-        // renderSync() returns only after GPU completes
-        let success = filterRenderer.renderSync(
+        print("   ✅ Output texture created")
+
+        // Step 4: Get or create FilterRenderer (thread-safe)
+        filterRendererLock.lock()
+        if photoFilterRenderer == nil {
+            photoFilterRenderer = FilterRenderer()
+            print("   🔧 Created new FilterRenderer for photo processing")
+        }
+        let renderer = photoFilterRenderer!
+        filterRendererLock.unlock()
+
+        // Step 5: Render with synchronous GPU wait
+        let success = renderer.renderSync(
             input: inputTexture,
             output: outputTexture,
             preset: preset,
@@ -240,19 +283,28 @@ class RenderEngine {
             texturePool.recycle(outputTexture)
             return nil
         }
+        
+        print("   ✅ GPU rendering completed")
 
-        // Convert MTLTexture → CGImage → UIImage
+        // Step 6: Convert texture back to CGImage
         guard let filteredCGImage = textureToCGImage(texture: outputTexture) else {
             print("❌ RenderEngine: Failed to convert texture to CGImage")
             texturePool.recycle(outputTexture)
             return nil
         }
 
-        let filteredImage = UIImage(cgImage: filteredCGImage, scale: image.scale, orientation: image.imageOrientation)
-        print("✅ RenderEngine: Filter applied successfully")
+        // Step 7: Create UIImage with original orientation
+        let filteredImage = UIImage(
+            cgImage: filteredCGImage,
+            scale: image.scale,
+            orientation: image.imageOrientation
+        )
         
-        // Recycle output texture
+        // Cleanup
         texturePool.recycle(outputTexture)
+        
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        print("✅ RenderEngine: Filter applied successfully in \(String(format: "%.3f", elapsed))s")
 
         return filteredImage
     }
@@ -287,6 +339,7 @@ class RenderEngine {
         }
 
         guard let dataProvider = CGDataProvider(data: Data(pixelData) as CFData) else {
+            print("❌ RenderEngine: Failed to create CGDataProvider")
             return nil
         }
 
@@ -307,4 +360,22 @@ class RenderEngine {
             intent: .defaultIntent
         )
     }
+    
+    // MARK: - Debug Helpers
+    
+    #if DEBUG
+    func printPoolStatistics() {
+        let stats = texturePool.statistics()
+        print("📊 TexturePool: available=\(stats.available), inUse=\(stats.inUse)")
+    }
+    
+    func printLUTCacheStatus() {
+        lutCacheLock.lock()
+        print("📊 LUT Cache: \(lutCache.count) entries")
+        for (name, texture) in lutCache {
+            print("   - \(name): \(texture.width)x\(texture.height)x\(texture.depth)")
+        }
+        lutCacheLock.unlock()
+    }
+    #endif
 }

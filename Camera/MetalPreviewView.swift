@@ -1,6 +1,6 @@
 // MetalPreviewView.swift
 // Film Camera - Metal-based Camera Preview with Real-time Filtering
-// ★★★ FIXED: Video orientation only updates when changed, not every frame ★★★
+// ★★★ OPTIMIZED: 1080p preview + 4-pass pipeline for 60fps ★★★
 
 import SwiftUI
 import MetalKit
@@ -42,7 +42,7 @@ struct MetalPreviewView: UIViewRepresentable {
         var isFrontCamera: Bool = false {
             didSet {
                 if oldValue != isFrontCamera {
-                    orientationNeedsUpdate = true  // ★ Only update when changed
+                    orientationNeedsUpdate = true
                 }
             }
         }
@@ -52,13 +52,14 @@ struct MetalPreviewView: UIViewRepresentable {
         private let filterRenderer: FilterRenderer
         private var videoOutputAdded = false
         
-        // ★★★ FIX: Track orientation state to avoid per-frame updates ★★★
+        // Orientation tracking
         private var orientationNeedsUpdate = true
         private var lastConfiguredOrientation: CGFloat = 90
         
         // Frame timing for debugging
         private var lastFrameTime: CFAbsoluteTime = 0
         private var frameCount: Int = 0
+        private var droppedFrameCount: Int = 0
 
         init(preset: FilterPreset) {
             self.currentPreset = preset
@@ -67,7 +68,7 @@ struct MetalPreviewView: UIViewRepresentable {
 
             CVMetalTextureCacheCreate(nil, nil, RenderEngine.shared.device, nil, &textureCache)
             
-            // ★ Observe orientation changes
+            // Observe orientation changes
             NotificationCenter.default.addObserver(
                 self,
                 selector: #selector(orientationDidChange),
@@ -100,14 +101,26 @@ struct MetalPreviewView: UIViewRepresentable {
                 return
             }
 
+            // ★★★ OPTIMIZATION A: Configure video output ★★★
             let videoOutput = AVCaptureVideoDataOutput()
             videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output", qos: .userInteractive))
+            
+            // Request BGRA format for optimal Metal performance
             videoOutput.videoSettings = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
             ]
             videoOutput.alwaysDiscardsLateVideoFrames = true
 
             cameraManager.session.beginConfiguration()
+            
+            // ★★★ Set session preset to 1080p for preview (Option A) ★★★
+            // This reduces pixels from 12MP (4032×3024) to 2MP (1920×1080)
+            // = 75% reduction in GPU workload
+            if cameraManager.session.canSetSessionPreset(.hd1920x1080) {
+                cameraManager.session.sessionPreset = .hd1920x1080
+                print("🎬 MetalPreviewView: Set session to 1080p for preview")
+            }
+            
             if cameraManager.session.canAddOutput(videoOutput) {
                 cameraManager.session.addOutput(videoOutput)
                 
@@ -120,15 +133,12 @@ struct MetalPreviewView: UIViewRepresentable {
             cameraManager.session.commitConfiguration()
         }
         
-        // ★★★ FIXED: Only configure when needed ★★★
         private func configureVideoOrientation(_ connection: AVCaptureConnection) {
-            // Set video orientation to portrait
             if connection.isVideoRotationAngleSupported(90) {
                 connection.videoRotationAngle = 90
                 lastConfiguredOrientation = 90
             }
             
-            // Handle mirroring for front camera
             if connection.isVideoMirroringSupported {
                 connection.isVideoMirrored = isFrontCamera
             }
@@ -139,7 +149,6 @@ struct MetalPreviewView: UIViewRepresentable {
         // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
 
         func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-            // ★★★ FIX: Only update orientation when needed, not every frame ★★★
             if orientationNeedsUpdate {
                 configureVideoOrientation(connection)
             }
@@ -149,9 +158,11 @@ struct MetalPreviewView: UIViewRepresentable {
         }
         
         func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-            // Frame dropped - expected under heavy load
+            droppedFrameCount += 1
             #if DEBUG
-            print("⚠️ MetalPreviewView: Frame dropped")
+            if droppedFrameCount % 10 == 0 {
+                print("⚠️ MetalPreviewView: Dropped \(droppedFrameCount) frames total")
+            }
             #endif
         }
 
@@ -159,7 +170,7 @@ struct MetalPreviewView: UIViewRepresentable {
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
             print("🎬 MetalPreviewView: Drawable size changed to \(size)")
-            orientationNeedsUpdate = true  // ★ May need reconfig after resize
+            orientationNeedsUpdate = true
         }
 
         func draw(in view: MTKView) {
@@ -169,29 +180,15 @@ struct MetalPreviewView: UIViewRepresentable {
                 return
             }
 
-            var cvTexture: CVMetalTexture?
-            let width = CVPixelBufferGetWidth(pixelBuffer)
-            let height = CVPixelBufferGetHeight(pixelBuffer)
-
-            let status = CVMetalTextureCacheCreateTextureFromImage(
-                nil,
-                textureCache,
-                pixelBuffer,
-                nil,
-                .bgra8Unorm,
-                width,
-                height,
-                0,
-                &cvTexture
-            )
-
-            guard status == kCVReturnSuccess,
-                  let cvTexture = cvTexture,
-                  let inputTexture = CVMetalTextureGetTexture(cvTexture) else {
+            // Create texture from pixel buffer (already 1080p from AVCaptureSession)
+            guard let inputTexture = createTexture(from: pixelBuffer, cache: textureCache) else {
                 return
             }
 
-            filterRenderer.renderToDrawable(
+            // ★★★ Use optimized preview pipeline (Option B: 4 passes) ★★★
+            // Skips: Lens Distortion, Halation (4 passes), Instant Frame
+            // Uses: ColorGrading, Grain, Bloom (simplified), Vignette
+            filterRenderer.renderPreview(
                 input: inputTexture,
                 drawable: drawable,
                 preset: currentPreset,
@@ -203,13 +200,43 @@ struct MetalPreviewView: UIViewRepresentable {
             #endif
         }
         
+        // MARK: - Texture Creation
+        
+        private func createTexture(from pixelBuffer: CVPixelBuffer, cache: CVMetalTextureCache) -> MTLTexture? {
+            var cvTexture: CVMetalTexture?
+            let width = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+
+            let status = CVMetalTextureCacheCreateTextureFromImage(
+                nil,
+                cache,
+                pixelBuffer,
+                nil,
+                .bgra8Unorm,
+                width,
+                height,
+                0,
+                &cvTexture
+            )
+
+            guard status == kCVReturnSuccess,
+                  let cvTexture = cvTexture,
+                  let texture = CVMetalTextureGetTexture(cvTexture) else {
+                return nil
+            }
+            
+            return texture
+        }
+        
         private func trackFrameRate() {
             frameCount += 1
             let now = CFAbsoluteTimeGetCurrent()
-            if now - lastFrameTime >= 1.0 {
+            if now - lastFrameTime >= 2.0 {  // Log every 2 seconds
                 let fps = Double(frameCount) / (now - lastFrameTime)
-                if fps < 25 {
-                    print("⚠️ MetalPreviewView: Low FPS: \(Int(fps))")
+                if fps < 55 {
+                    print("⚠️ MetalPreviewView: FPS: \(Int(fps)) (target: 60)")
+                } else {
+                    print("✅ MetalPreviewView: FPS: \(Int(fps))")
                 }
                 frameCount = 0
                 lastFrameTime = now

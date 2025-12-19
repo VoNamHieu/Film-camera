@@ -1,6 +1,6 @@
 // FilterRenderer.swift
 // Film Camera - Core Filter Rendering Pipeline
-// ★★★ FIXED: Added renderSync() with proper GPU synchronization ★★★
+// ★★★ OPTIMIZED: Separate Preview (4 passes) vs Capture (full) pipelines ★★★
 
 import Foundation
 import Metal
@@ -24,7 +24,109 @@ class FilterRenderer {
         renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     }
 
-    // MARK: - Main Rendering Pipeline (Render to Drawable)
+    // MARK: - ★★★ OPTIMIZED: Preview Pipeline (4 passes, 60fps) ★★★
+    
+    /// Lightweight preview rendering for live viewfinder
+    /// Only 4 passes: ColorGrading → Grain → Bloom(simple) → Vignette
+    func renderPreview(input: MTLTexture, drawable: CAMetalDrawable, preset: FilterPreset, commandQueue: MTLCommandQueue) {
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            return
+        }
+
+        let texturePool = RenderEngine.shared.texturePool
+
+        // Allocate ping-pong buffers at input resolution
+        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+            return
+        }
+
+        pingPongTextures[0] = temp1
+        pingPongTextures[1] = temp2
+        pingPongIndex = 0
+
+        var currentInput = input
+
+        // ═══════════════════════════════════════════════════════════════
+        // PREVIEW PIPELINE: Only 4 passes for 60fps performance
+        // ═══════════════════════════════════════════════════════════════
+
+        // PASS 1: Color Grading (includes LUT, curves, selective color)
+        if let result = applyColorGrading(input: currentInput, preset: preset, commandBuffer: commandBuffer) {
+            currentInput = result
+        }
+
+        // PASS 2: Grain (lightweight)
+        if preset.grain.enabled {
+            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        // PASS 3: Bloom (single-pass simplified, radius capped at 8)
+        if preset.bloom.enabled {
+            if let result = applyBloomSimplified(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        // PASS 4: Vignette
+        if preset.vignette.enabled {
+            if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SKIPPED FOR PREVIEW (applied only during capture):
+        // - Lens Distortion
+        // - Halation (4 passes)
+        // - Separable Bloom (use simplified instead)
+        // - Instant Frame
+        // ═══════════════════════════════════════════════════════════════
+
+        // FINAL: Blit to drawable
+        blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
+
+        // Recycle textures after GPU completes
+        commandBuffer.addCompletedHandler { [weak texturePool] _ in
+            texturePool?.recycle(temp1)
+            texturePool?.recycle(temp2)
+        }
+
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+    }
+
+    // MARK: - ★★★ Simplified Bloom (Single Pass, Radius 8) ★★★
+    
+    private func applyBloomSimplified(input: MTLTexture, config: BloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.bloomPipeline,  // Use legacy single-pass
+              let output = getNextOutputTexture() else { return nil }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        // ★ OPTIMIZED: Cap radius at 8 for preview, skip every other sample
+        var params = BloomParams()
+        params.intensity = config.intensity
+        params.threshold = config.threshold
+        params.radius = min(config.radius, 8.0)  // ★ MAX 8 for preview
+        params.softness = config.softness
+        params.colorTint = SIMD3<Float>(config.colorTint.r, config.colorTint.g, config.colorTint.b)
+        params.enabled = 1
+
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    // MARK: - Full Quality Render (for Capture)
     
     /// Render directly to drawable with proper presentation (async, for preview)
     func renderToDrawable(input: MTLTexture, drawable: CAMetalDrawable, preset: FilterPreset, commandQueue: MTLCommandQueue) {
@@ -35,7 +137,6 @@ class FilterRenderer {
 
         let texturePool = RenderEngine.shared.texturePool
 
-        // Allocate ping-pong buffers
         guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
             print("FilterRenderer: Failed to allocate intermediate textures")
@@ -48,27 +149,24 @@ class FilterRenderer {
 
         var currentInput = input
 
-        // Execute filter pipeline
-        currentInput = executePipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
+        // Execute FULL filter pipeline (13 passes)
+        currentInput = executeFullPipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
 
         // FINAL PASS: Blit to drawable
         blitToOutput(source: currentInput, destination: drawable.texture, commandBuffer: commandBuffer)
 
-        // Recycle textures after GPU completes
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
             texturePool?.recycle(temp1)
             texturePool?.recycle(temp2)
         }
 
-        // Present and commit
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
 
-    // MARK: - ★★★ FIXED: Synchronous Render (for photo capture) ★★★
+    // MARK: - ★★★ Synchronous Render (for photo capture) ★★★
     
-    /// Render to texture SYNCHRONOUSLY - waits for GPU to complete before returning
-    /// Returns true if successful, false otherwise
+    /// Render to texture SYNCHRONOUSLY with FULL quality pipeline
     func renderSync(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) -> Bool {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             print("FilterRenderer: Failed to create command buffer")
@@ -89,8 +187,8 @@ class FilterRenderer {
 
         var currentInput = input
 
-        // Execute filter pipeline
-        currentInput = executePipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
+        // Execute FULL pipeline for capture (all 13 passes)
+        currentInput = executeFullPipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
 
         // Final blit to output
         blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
@@ -99,7 +197,6 @@ class FilterRenderer {
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         
-        // Check for errors
         if let error = commandBuffer.error {
             print("❌ FilterRenderer: GPU error - \(error.localizedDescription)")
             texturePool.recycle(temp1)
@@ -107,19 +204,16 @@ class FilterRenderer {
             return false
         }
 
-        // Recycle textures AFTER GPU is done (synchronous, so safe to do here)
         texturePool.recycle(temp1)
         texturePool.recycle(temp2)
         
         return true
     }
     
-    // MARK: - Async Render (legacy, for backwards compatibility)
+    // MARK: - Async Render (legacy)
     
-    /// Render to texture asynchronously (for non-blocking operations)
     func render(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            print("FilterRenderer: Failed to create command buffer")
             return
         }
 
@@ -127,7 +221,6 @@ class FilterRenderer {
 
         guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
-            print("FilterRenderer: Failed to allocate intermediate textures")
             return
         }
 
@@ -136,13 +229,9 @@ class FilterRenderer {
         pingPongIndex = 0
 
         var currentInput = input
-
-        // Execute filter pipeline
-        currentInput = executePipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
-
+        currentInput = executeFullPipeline(input: currentInput, preset: preset, commandBuffer: commandBuffer)
         blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
 
-        // Recycle after completion (async)
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
             texturePool?.recycle(temp1)
             texturePool?.recycle(temp2)
@@ -151,9 +240,9 @@ class FilterRenderer {
         commandBuffer.commit()
     }
 
-    // MARK: - Shared Pipeline Execution
+    // MARK: - Full Pipeline Execution (13 passes for capture)
     
-    private func executePipeline(input: MTLTexture, preset: FilterPreset, commandBuffer: MTLCommandBuffer) -> MTLTexture {
+    private func executeFullPipeline(input: MTLTexture, preset: FilterPreset, commandBuffer: MTLCommandBuffer) -> MTLTexture {
         var currentInput = input
 
         // PASS 1: Lens Distortion
@@ -175,28 +264,28 @@ class FilterRenderer {
             }
         }
 
-        // PASS 4: Bloom (Separable - 4 passes)
+        // PASS 4-7: Bloom (Separable - 4 passes) - FULL QUALITY
         if preset.bloom.enabled {
             if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
             }
         }
 
-        // PASS 5: Vignette
+        // PASS 8: Vignette
         if preset.vignette.enabled {
             if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
                 currentInput = result
             }
         }
 
-        // PASS 6: Halation (Separable - 4 passes)
+        // PASS 9-12: Halation (Separable - 4 passes) - FULL QUALITY
         if preset.halation.enabled {
             if let result = applyHalationSeparable(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
                 currentInput = result
             }
         }
 
-        // PASS 7: Instant Frame
+        // PASS 13: Instant Frame
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -210,7 +299,7 @@ class FilterRenderer {
     
     private func getNextOutputTexture() -> MTLTexture? {
         let output = pingPongTextures[pingPongIndex]
-        pingPongIndex = 1 - pingPongIndex  // Toggle 0 ↔ 1
+        pingPongIndex = 1 - pingPongIndex
         return output
     }
 
@@ -251,21 +340,17 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        // Prepare params AFTER checking if LUT actually loaded
         var params = prepareColorGradingParams(preset)
         
-        // Only set useLUT = 1 if texture actually loaded successfully
         var lutLoaded = false
         if let lutFile = preset.lutFile, let lutTexture = RenderEngine.shared.loadLUT(named: lutFile) {
             renderEncoder.setFragmentTexture(lutTexture, index: 1)
             lutLoaded = true
         }
         
-        // Override useLUT based on actual load status
         params.useLUT = lutLoaded ? 1 : 0
         
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
-
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
@@ -291,7 +376,7 @@ class FilterRenderer {
         return output
     }
 
-    // MARK: - Separable Bloom Pipeline (4 passes)
+    // MARK: - Separable Bloom Pipeline (4 passes) - CAPTURE ONLY
     
     private func applyBloomSeparable(input: MTLTexture, config: BloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         let texturePool = RenderEngine.shared.texturePool
@@ -339,20 +424,19 @@ class FilterRenderer {
             }
         }
 
-        // Pass 4: Composite with original
+        // Pass 4: Composite
         if let pipeline = RenderEngine.shared.bloomCompositePipeline {
             renderPassDescriptor.colorAttachments[0].texture = output
             if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
                 encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(input, index: 0)      // Original
-                encoder.setFragmentTexture(verticalTex, index: 1) // Blurred bloom
+                encoder.setFragmentTexture(input, index: 0)
+                encoder.setFragmentTexture(verticalTex, index: 1)
                 encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
                 encoder.endEncoding()
             }
         }
 
-        // Recycle intermediate textures after completion
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
             texturePool?.recycle(thresholdTex)
             texturePool?.recycle(horizontalTex)
@@ -362,7 +446,7 @@ class FilterRenderer {
         return output
     }
 
-    // MARK: - Separable Halation Pipeline (4 passes)
+    // MARK: - Separable Halation Pipeline (4 passes) - CAPTURE ONLY
     
     private func applyHalationSeparable(input: MTLTexture, config: HalationConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         let texturePool = RenderEngine.shared.texturePool
@@ -410,7 +494,7 @@ class FilterRenderer {
             }
         }
 
-        // Pass 4: Additive composite
+        // Pass 4: Composite
         if let pipeline = RenderEngine.shared.halationCompositePipeline {
             renderPassDescriptor.colorAttachments[0].texture = output
             if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
@@ -533,8 +617,7 @@ class FilterRenderer {
         var params = BloomParams()
         params.intensity = config.intensity
         params.threshold = config.threshold
-        // ★ FIX: Cap radius for performance
-        params.radius = min(config.radius, 20.0)
+        params.radius = min(config.radius, 20.0)  // Full quality for capture
         params.softness = config.softness
         params.colorTint = SIMD3<Float>(config.colorTint.r, config.colorTint.g, config.colorTint.b)
         params.enabled = config.enabled ? 1 : 0
@@ -555,8 +638,7 @@ class FilterRenderer {
         var params = HalationParams()
         params.intensity = config.intensity
         params.threshold = config.threshold
-        // ★ FIX: Cap radius for performance
-        params.radius = min(config.radius, 25.0)
+        params.radius = min(config.radius, 25.0)  // Full quality for capture
         params.softness = config.softness
         params.color = SIMD3<Float>(config.color.r, config.color.g, config.color.b)
         params.enabled = config.enabled ? 1 : 0

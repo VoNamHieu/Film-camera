@@ -1,6 +1,6 @@
 // PhotoEditorView.swift
 // Film Camera - Photo Editor with Filter Application
-// Allows selecting photos from library and applying film presets
+// ★★★ FIXED: Race condition, slow loading, intermittent filter failures ★★★
 
 import SwiftUI
 import PhotosUI
@@ -25,7 +25,16 @@ struct PhotoEditorView: View {
     
     // Compare slider position
     @State private var comparePosition: CGFloat = 0.5
-    @GestureState private var isDragging = false
+    
+    // ★★★ FIX 1: Task cancellation to prevent race conditions ★★★
+    @State private var currentFilterTask: Task<Void, Never>?
+    
+    // ★★★ FIX 2: Separate preview and full-res images ★★★
+    @State private var previewImage: UIImage?  // Smaller for fast preview
+    @State private var fullResImage: UIImage?  // Original resolution
+    
+    // ★★★ FIX 3: Processing state with ID to track which filter is active ★★★
+    @State private var processingPresetId: String?
     
     var body: some View {
         NavigationView {
@@ -51,8 +60,12 @@ struct PhotoEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(.white)
+                    Button("Cancel") {
+                        // ★ Cancel any pending task before dismissing
+                        currentFilterTask?.cancel()
+                        dismiss()
+                    }
+                    .foregroundColor(.white)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -70,8 +83,9 @@ struct PhotoEditorView: View {
         .onChange(of: selectedItem) { _, newItem in
             loadImage(from: newItem)
         }
-        .onChange(of: selectedPreset) { _, _ in
-            applyFilter()
+        .onChange(of: selectedPreset) { oldPreset, newPreset in
+            // ★★★ FIX: Debounced filter application with cancellation ★★★
+            applyFilterDebounced(preset: newPreset)
         }
         .alert("Photo Saved", isPresented: $showSavedAlert) {
             Button("OK", role: .cancel) { }
@@ -82,6 +96,10 @@ struct PhotoEditorView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(errorMessage)
+        }
+        .onDisappear {
+            // ★ Cleanup on view disappear
+            currentFilterTask?.cancel()
         }
     }
     
@@ -164,11 +182,18 @@ struct PhotoEditorView: View {
                 
                 Spacer()
                 
-                // Filter name
-                Text(selectedPreset.label)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+                // Filter name with processing indicator
+                HStack(spacing: 6) {
+                    if processingPresetId == selectedPreset.id {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.7)
+                    }
+                    Text(selectedPreset.label)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
                 
                 Spacer()
                 
@@ -176,7 +201,7 @@ struct PhotoEditorView: View {
                 Button(action: { showBeforeAfter.toggle() }) {
                     HStack(spacing: 6) {
                         Image(systemName: showBeforeAfter ? "square.split.2x1.fill" : "square.split.2x1")
-                        Text(showBeforeAfter ? "Compare" : "Compare")
+                        Text("Compare")
                     }
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(showBeforeAfter ? .black : .white)
@@ -260,33 +285,45 @@ struct PhotoEditorView: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(1.5)
                 
-                Text("Applying Filter...")
+                Text("Loading Photo...")
                     .font(.headline)
                     .foregroundColor(.white)
             }
         }
     }
     
-    // MARK: - Actions
+    // MARK: - ★★★ FIXED: Image Loading ★★★
     
     private func loadImage(from item: PhotosPickerItem?) {
         guard let item = item else { return }
         
+        // Cancel any pending filter task
+        currentFilterTask?.cancel()
+        currentFilterTask = nil
+        
         isProcessing = true
+        filteredImage = nil
         
         Task {
             do {
                 if let data = try await item.loadTransferable(type: Data.self),
                    let uiImage = UIImage(data: data) {
+                    
+                    // ★★★ FIX: Create both preview and full-res versions ★★★
+                    let maxPreviewDimension: CGFloat = 1200  // Smaller for fast preview
+                    let maxFullResDimension: CGFloat = 3000  // Full quality for save
+                    
+                    let preview = uiImage.resizedIfNeeded(maxDimension: maxPreviewDimension)
+                    let fullRes = uiImage.resizedIfNeeded(maxDimension: maxFullResDimension)
+                    
                     await MainActor.run {
-                        // Resize if too large (for performance)
-                        let maxDimension: CGFloat = 3000
-                        self.originalImage = uiImage.resizedIfNeeded(maxDimension: maxDimension)
-                        self.filteredImage = nil
+                        self.previewImage = preview
+                        self.fullResImage = fullRes
+                        self.originalImage = preview  // Show preview first
                         self.isProcessing = false
                         
                         // Apply current filter
-                        applyFilter()
+                        applyFilterDebounced(preset: selectedPreset)
                     }
                 } else {
                     await MainActor.run {
@@ -305,52 +342,128 @@ struct PhotoEditorView: View {
         }
     }
     
-    private func applyFilter() {
-        guard let original = originalImage else { return }
+    // MARK: - ★★★ FIXED: Filter Application with Cancellation ★★★
+    
+    private func applyFilterDebounced(preset: FilterPreset) {
+        // Cancel any existing filter task
+        currentFilterTask?.cancel()
         
-        isProcessing = true
+        guard let original = previewImage ?? originalImage else { return }
         
-        // Process on background queue
-        DispatchQueue.global(qos: .userInitiated).async {
-            let filtered = RenderEngine.shared.applyFilter(to: original, preset: selectedPreset)
+        // Track which preset is being processed
+        processingPresetId = preset.id
+        
+        // Create new task with cancellation support
+        currentFilterTask = Task { @MainActor in
+            // Small delay to debounce rapid preset changes
+            try? await Task.sleep(nanoseconds: 50_000_000)  // 50ms debounce
             
-            DispatchQueue.main.async {
-                self.filteredImage = filtered ?? original
-                self.isProcessing = false
+            // Check if cancelled
+            guard !Task.isCancelled else {
+                print("🚫 PhotoEditor: Filter task cancelled (debounce)")
+                return
+            }
+            
+            // Check if this is still the active preset
+            guard preset.id == selectedPreset.id else {
+                print("🚫 PhotoEditor: Preset changed, skipping \(preset.id)")
+                return
+            }
+            
+            print("🎨 PhotoEditor: Applying filter '\(preset.label)'...")
+            let startTime = CFAbsoluteTimeGetCurrent()
+            
+            // Process on background thread
+            let filtered = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    // ★★★ FIX: Check cancellation before heavy work ★★★
+                    guard !Task.isCancelled else {
+                        continuation.resume(returning: nil as UIImage?)
+                        return
+                    }
+                    
+                    let result = RenderEngine.shared.applyFilter(to: original, preset: preset)
+                    continuation.resume(returning: result)
+                }
+            }
+            
+            // Check if cancelled or preset changed
+            guard !Task.isCancelled, preset.id == selectedPreset.id else {
+                print("🚫 PhotoEditor: Filter task cancelled (after processing)")
+                return
+            }
+            
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            print("✅ PhotoEditor: Filter applied in \(String(format: "%.2f", elapsed))s")
+            
+            // Update UI
+            if let filtered = filtered {
+                self.filteredImage = filtered
+            } else {
+                print("⚠️ PhotoEditor: Filter returned nil, using original")
+                self.filteredImage = original
+            }
+            
+            // Clear processing indicator
+            if processingPresetId == preset.id {
+                processingPresetId = nil
             }
         }
     }
     
+    // MARK: - ★★★ FIXED: Save with Full Resolution ★★★
+    
     private func savePhoto() {
-        guard let imageToSave = filteredImage ?? originalImage else { return }
+        // ★★★ FIX: Use full-res image for saving, apply filter at full res ★★★
+        guard let fullRes = fullResImage ?? originalImage else { return }
         
         isProcessing = true
         
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            guard status == .authorized || status == .limited else {
-                DispatchQueue.main.async {
-                    self.isProcessing = false
-                    self.errorMessage = "Photo library access denied. Please enable in Settings."
-                    self.showErrorAlert = true
-                }
-                return
-            }
-            
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: imageToSave)
-            }) { success, error in
-                DispatchQueue.main.async {
-                    self.isProcessing = false
-                    
-                    if success {
-                        self.showSavedAlert = true
-                        let feedback = UINotificationFeedbackGenerator()
-                        feedback.notificationOccurred(.success)
+        Task {
+            // Apply filter to full resolution image
+            let imageToSave: UIImage = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if let filtered = RenderEngine.shared.applyFilter(to: fullRes, preset: selectedPreset) {
+                        continuation.resume(returning: filtered)
                     } else {
-                        self.errorMessage = error?.localizedDescription ?? "Could not save photo."
-                        self.showErrorAlert = true
+                        continuation.resume(returning: fullRes)
                     }
                 }
+            }
+            
+            // Save to photo library
+            await saveToPhotoLibrary(imageToSave)
+        }
+    }
+    
+    private func saveToPhotoLibrary(_ image: UIImage) async {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        
+        guard status == .authorized || status == .limited else {
+            await MainActor.run {
+                self.isProcessing = false
+                self.errorMessage = "Photo library access denied. Please enable in Settings."
+                self.showErrorAlert = true
+            }
+            return
+        }
+        
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            
+            await MainActor.run {
+                self.isProcessing = false
+                self.showSavedAlert = true
+                let feedback = UINotificationFeedbackGenerator()
+                feedback.notificationOccurred(.success)
+            }
+        } catch {
+            await MainActor.run {
+                self.isProcessing = false
+                self.errorMessage = error.localizedDescription
+                self.showErrorAlert = true
             }
         }
     }
@@ -362,8 +475,6 @@ struct CompareSliderView: View {
     let beforeImage: UIImage
     let afterImage: UIImage
     @Binding var position: CGFloat
-    
-    @GestureState private var isDragging = false
     
     var body: some View {
         GeometryReader { geometry in
