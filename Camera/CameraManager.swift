@@ -1,11 +1,12 @@
 // CameraManager.swift
 // Film Camera - Camera Session and Photo Capture Manager
-// ★★★ COMPLETE: All required properties and methods ★★★
+// ★★★ FIXED: Added import Combine for @Published ★★★
 
 import AVFoundation
 import UIKit
 import Photos
 import Metal
+import Combine  // ★★★ REQUIRED for @Published ★★★
 
 // MARK: - Permission Status Enum
 
@@ -30,7 +31,7 @@ class CameraManager: NSObject, ObservableObject {
     @Published var flashMode: AVCaptureDevice.FlashMode = .off
     @Published var exposureCompensation: Float = 0.0
     
-    // ★★★ NEW: Permission and error handling ★★★
+    // Permission and error handling
     @Published var permissionStatus: CameraPermissionStatus = .notDetermined
     @Published var isInterrupted = false
     @Published var error: Error?
@@ -62,7 +63,7 @@ class CameraManager: NSObject, ObservableObject {
         NotificationCenter.default.removeObserver(self)
     }
     
-    // MARK: - ★★★ Permission Handling ★★★
+    // MARK: - Permission Handling
     
     func checkPermissionStatus() {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
@@ -97,7 +98,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - ★★★ Session Interruption Notifications ★★★
+    // MARK: - Session Interruption Notifications
     
     private func setupNotifications() {
         NotificationCenter.default.addObserver(
@@ -182,7 +183,6 @@ class CameraManager: NSObject, ObservableObject {
         
         // Add photo output
         let photoOutput = AVCapturePhotoOutput()
-        photoOutput.isHighResolutionCaptureEnabled = true
         photoOutput.maxPhotoQualityPrioritization = .quality
         
         if session.canAddOutput(photoOutput) {
@@ -278,7 +278,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    // ★★★ FIXED: focus method with correct signature ★★★
+    // Focus method with correct signature
     func focus(at point: CGPoint, in view: UIView) {
         guard let device = videoDeviceInput?.device,
               device.isFocusPointOfInterestSupported else { return }
@@ -299,7 +299,7 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
-    // ★★★ NEW: Toggle Flash ★★★
+    // Toggle Flash
     func toggleFlash() {
         switch flashMode {
         case .off:
@@ -314,7 +314,7 @@ class CameraManager: NSObject, ObservableObject {
         print("🔦 CameraManager: Flash mode set to \(flashMode)")
     }
     
-    // MARK: - ★★★ Photo Capture with FULL Quality Pipeline ★★★
+    // MARK: - Photo Capture with FULL Quality Pipeline
     
     func capturePhoto(preset: FilterPreset, completion: @escaping (UIImage?) -> Void) {
         guard let photoOutput = photoOutput else {
@@ -338,7 +338,6 @@ class CameraManager: NSObject, ObservableObject {
             photoSettings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
         }
         
-        photoSettings.isHighResolutionPhotoEnabled = true
         photoSettings.flashMode = flashMode
         
         // Create processor for this capture
@@ -421,7 +420,7 @@ class CameraManager: NSObject, ObservableObject {
     }
 }
 
-// MARK: - ★★★ Photo Capture Processor (Full Quality Pipeline) ★★★
+// MARK: - Photo Capture Processor (Full Quality Pipeline)
 
 class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
     
@@ -469,7 +468,7 @@ class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
         }
     }
     
-    // MARK: - ★★★ Apply Full Quality Filters (13 passes) ★★★
+    // MARK: - Apply Full Quality Filters (13 passes)
     
     private func applyFullQualityFilters(to image: UIImage) -> UIImage? {
         guard let cgImage = image.cgImage else { return nil }
@@ -504,7 +503,7 @@ class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
         
         print("🎨 PhotoCaptureProcessor: Applying FULL 13-pass pipeline at \(cgImage.width)×\(cgImage.height)")
         
-        // ★★★ Use SYNCHRONOUS render with FULL quality ★★★
+        // Use SYNCHRONOUS render with FULL quality
         let success = filterRenderer.renderSync(
             input: inputTexture,
             output: outputTexture,
