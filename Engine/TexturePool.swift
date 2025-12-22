@@ -57,7 +57,11 @@ class TexturePool {
         availableTextures[key]?.append(texture)
     }
     
-    /// Create a texture for render target use
+    /// Create a texture for render target use (GPU-only intermediate textures)
+    /// ★ FIX: Dùng .private cho intermediate textures để tránh GPU timeout
+    /// - .private: Chỉ GPU access, nhanh nhất, không cần memory barriers
+    /// - .shared: CPU+GPU access, chậm hơn, cần sync barriers
+    /// Với 13-pass pipeline + ảnh 12MP, .shared gây nghẽn bandwidth → timeout
     func renderTargetTexture(width: Int, height: Int, pixelFormat: MTLPixelFormat = .bgra8Unorm) -> MTLTexture? {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: pixelFormat,
@@ -66,23 +70,17 @@ class TexturePool {
             mipmapped: false
         )
         descriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
-        
-        // ★ FIX: Use correct storage mode for platform
+
+        // ★ FIX: Use .private for GPU-only intermediate textures
+        // This eliminates memory barriers between render passes
         #if os(iOS) || os(tvOS)
-        // iOS uses unified memory - .shared allows CPU read/write
-        descriptor.storageMode = .shared
+        descriptor.storageMode = .private  // ★ CHANGED from .shared
         #elseif os(macOS)
-        // macOS with discrete GPU benefits from .private
-        // But for simplicity and compatibility, .shared works too
-        if device.hasUnifiedMemory {
-            descriptor.storageMode = .shared
-        } else {
-            descriptor.storageMode = .private
-        }
+        descriptor.storageMode = .private
         #else
-        descriptor.storageMode = .shared
+        descriptor.storageMode = .private
         #endif
-        
+
         return texture(matching: descriptor)
     }
     

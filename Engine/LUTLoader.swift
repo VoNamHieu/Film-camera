@@ -152,40 +152,46 @@ class LUTLoader {
     }
     
     /// Create 3D texture from LUT data
+    /// ★ OPTIMIZED: Use rgba16Float instead of rgba32Float
+    /// - rgba32Float: 16 bytes/pixel → 575 KB for 33³ LUT
+    /// - rgba16Float: 8 bytes/pixel → 288 KB for 33³ LUT (50% reduction)
+    /// Visual quality is identical for color grading purposes
     private static func createTexture(data: [Float], size: Int, device: MTLDevice) -> MTLTexture? {
         let descriptor = MTLTextureDescriptor()
         descriptor.textureType = .type3D
-        descriptor.pixelFormat = .rgba32Float
+        descriptor.pixelFormat = .rgba16Float  // ★ CHANGED from .rgba32Float
         descriptor.width = size
         descriptor.height = size
         descriptor.depth = size
         descriptor.usage = .shaderRead
-        
+
         guard let texture = device.makeTexture(descriptor: descriptor) else {
             print("❌ Failed to create 3D texture")
             return nil
         }
-        
-        // Convert RGB to RGBA
-        var rgbaData: [Float] = []
-        rgbaData.reserveCapacity(size * size * size * 4)
-        
-        for i in stride(from: 0, to: data.count, by: 3) {
-            rgbaData.append(data[i])     // R
-            rgbaData.append(data[i + 1]) // G
-            rgbaData.append(data[i + 2]) // B
-            rgbaData.append(1.0)         // A
+
+        // Convert RGB Float32 to RGBA Float16
+        let totalPixels = size * size * size
+        var rgba16Data = [UInt16](repeating: 0, count: totalPixels * 4)
+
+        for i in 0..<totalPixels {
+            let srcIdx = i * 3
+            let dstIdx = i * 4
+            rgba16Data[dstIdx + 0] = floatToHalf(data[srcIdx + 0])  // R
+            rgba16Data[dstIdx + 1] = floatToHalf(data[srcIdx + 1])  // G
+            rgba16Data[dstIdx + 2] = floatToHalf(data[srcIdx + 2])  // B
+            rgba16Data[dstIdx + 3] = floatToHalf(1.0)               // A
         }
-        
+
         let region = MTLRegion(
             origin: MTLOrigin(x: 0, y: 0, z: 0),
             size: MTLSize(width: size, height: size, depth: size)
         )
-        
-        let bytesPerRow = size * 4 * MemoryLayout<Float>.size
+
+        let bytesPerRow = size * 4 * MemoryLayout<UInt16>.size  // 8 bytes per pixel
         let bytesPerImage = bytesPerRow * size
-        
-        rgbaData.withUnsafeBytes { ptr in
+
+        rgba16Data.withUnsafeBytes { ptr in
             texture.replace(
                 region: region,
                 mipmapLevel: 0,
@@ -195,8 +201,47 @@ class LUTLoader {
                 bytesPerImage: bytesPerImage
             )
         }
-        
-        print("✅ LUT texture created: \(size)x\(size)x\(size)")
+
+        print("✅ LUT texture created: \(size)x\(size)x\(size) (rgba16Float)")
         return texture
+    }
+
+    /// Convert Float32 to Float16 (IEEE 754 half-precision)
+    private static func floatToHalf(_ value: Float) -> UInt16 {
+        let bits = value.bitPattern
+        let sign = (bits >> 31) & 0x1
+        let exp = (bits >> 23) & 0xFF
+        let mantissa = bits & 0x7FFFFF
+
+        var halfSign = UInt16(sign << 15)
+        var halfExp: UInt16
+        var halfMantissa: UInt16
+
+        if exp == 0 {
+            // Zero or denormalized
+            halfExp = 0
+            halfMantissa = 0
+        } else if exp == 0xFF {
+            // Infinity or NaN
+            halfExp = 0x1F
+            halfMantissa = mantissa != 0 ? 0x200 : 0
+        } else {
+            // Normalized
+            let newExp = Int(exp) - 127 + 15
+            if newExp >= 31 {
+                // Overflow → Infinity
+                halfExp = 0x1F
+                halfMantissa = 0
+            } else if newExp <= 0 {
+                // Underflow → Zero
+                halfExp = 0
+                halfMantissa = 0
+            } else {
+                halfExp = UInt16(newExp)
+                halfMantissa = UInt16(mantissa >> 13)
+            }
+        }
+
+        return halfSign | (halfExp << 10) | halfMantissa
     }
 }

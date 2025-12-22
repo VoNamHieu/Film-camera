@@ -226,25 +226,66 @@ class RenderEngine {
     }
     
     // MARK: - LUT Management (Thread-Safe)
-    
+
+    /// All LUT files used by presets - for preloading
+    private static let allLUTFiles: [String] = [
+        "Kodak_Portra_400_Linear.cube",
+        "Kodak_Portra_160_Linear.cube",
+        "Fuji_400H_Linear.cube",
+        "Kodak_Ultramax_400_linear_inout.cube",
+        "Kodak_Gold_200_v2_linear.cube",
+        "Kodak_ColorPlus_200_Linear.cube",
+        "Fuji_Superia_400_Linear.cube",
+        "Fuji_Velvia_100_Linear.cube",
+        "provia_100f_33.cube",
+        "Fuji_Astia_100F_Linear.cube",
+        "Fuji_Eterna_linear.cube",
+        "Kodak_Tri-X_400_Linear.cube",
+        "Polaroid_600_Linear.cube",
+        "Nostalgic_Neg_Linear.cube",
+        "classic_chrome_linear.cube"
+    ]
+
+    /// ★ NEW: Preload all LUTs on background thread to eliminate UI jank
+    /// Call this from app startup (e.g., in App.init or ContentView.onAppear)
+    func preloadAllLUTs() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+
+            let startTime = CFAbsoluteTimeGetCurrent()
+            var loadedCount = 0
+
+            print("🔄 RenderEngine: Preloading \(Self.allLUTFiles.count) LUTs...")
+
+            for lutFile in Self.allLUTFiles {
+                if self.loadLUT(named: lutFile) != nil {
+                    loadedCount += 1
+                }
+            }
+
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            print("✅ RenderEngine: Preloaded \(loadedCount)/\(Self.allLUTFiles.count) LUTs in \(String(format: "%.2f", elapsed))s")
+        }
+    }
+
     func loadLUT(named filename: String) -> MTLTexture? {
         lutCacheLock.lock()
         defer { lutCacheLock.unlock() }
-        
+
         if let cached = lutCache[filename] {
             return cached
         }
-        
+
         guard let texture = LUTLoader.load(filename: filename, device: device) else {
             print("⚠️ RenderEngine: Failed to load LUT: \(filename)")
             return nil
         }
-        
+
         lutCache[filename] = texture
         print("✅ RenderEngine: LUT loaded and cached: \(filename)")
         return texture
     }
-    
+
     func clearLUTCache() {
         lutCacheLock.lock()
         lutCache.removeAll()
@@ -302,9 +343,73 @@ class RenderEngine {
         }
     }
 
+    // MARK: - ★ NEW: Fast Preview for Gallery
+
+    /// Apply filter with lightweight 2-pass pipeline for gallery preview
+    /// Only includes: Color Grading (LUT) + Vignette
+    /// Use this when scrolling through presets for fast response
+    func applyFilterPreview(to image: UIImage, preset: FilterPreset) -> UIImage? {
+        guard isInitialized else {
+            print("❌ RenderEngine: Not initialized for preview")
+            return nil
+        }
+
+        guard let cgImage = image.cgImage else {
+            print("❌ RenderEngine: Failed to get CGImage for preview")
+            return nil
+        }
+
+        guard let inputTexture = makeTexture(from: cgImage) else {
+            print("❌ RenderEngine: Failed to create preview input texture")
+            return nil
+        }
+
+        guard let outputTexture = texturePool.readableTexture(
+            width: inputTexture.width,
+            height: inputTexture.height,
+            pixelFormat: .bgra8Unorm
+        ) else {
+            print("❌ RenderEngine: Failed to create preview output texture")
+            return nil
+        }
+
+        filterRendererLock.lock()
+        if photoFilterRenderer == nil {
+            photoFilterRenderer = FilterRenderer()
+        }
+        let renderer = photoFilterRenderer!
+        filterRendererLock.unlock()
+
+        // Use lightweight 2-pass pipeline
+        let success = renderer.renderGalleryPreview(
+            input: inputTexture,
+            output: outputTexture,
+            preset: preset,
+            commandQueue: commandQueue
+        )
+
+        guard success else {
+            texturePool.recycle(outputTexture)
+            return nil
+        }
+
+        guard let filteredCGImage = textureToCGImage(texture: outputTexture) else {
+            texturePool.recycle(outputTexture)
+            return nil
+        }
+
+        texturePool.recycle(outputTexture)
+
+        return UIImage(
+            cgImage: filteredCGImage,
+            scale: image.scale,
+            orientation: image.imageOrientation
+        )
+    }
+
     // MARK: - ★★★ FIXED: Photo Filtering with Better Error Handling ★★★
-    
-    /// Apply filter to UIImage and return filtered UIImage
+
+    /// Apply filter to UIImage and return filtered UIImage (FULL 13-pass pipeline)
     /// Thread-safe and includes comprehensive error handling
     func applyFilter(to image: UIImage, preset: FilterPreset) -> UIImage? {
         let startTime = CFAbsoluteTimeGetCurrent()
