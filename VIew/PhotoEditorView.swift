@@ -5,6 +5,26 @@
 import SwiftUI
 import PhotosUI
 import Photos
+import UniformTypeIdentifiers
+
+// MARK: - ★★★ FIX: Custom Transferable for reliable image loading on real devices ★★★
+
+struct PickedImage: Transferable {
+    let image: UIImage
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            guard let uiImage = UIImage(data: data) else {
+                throw TransferError.importFailed
+            }
+            return PickedImage(image: uiImage)
+        }
+    }
+
+    enum TransferError: Error {
+        case importFailed
+    }
+}
 
 // MARK: - Photo Editor View
 
@@ -312,63 +332,67 @@ struct PhotoEditorView: View {
     }
     
     // MARK: - Image Loading
-    
+
+    /// ★★★ FIXED: Use custom Transferable type for reliable loading on real devices ★★★
     private func loadImage(from item: PhotosPickerItem?) {
         guard let item = item else { return }
-        
+
         print("📷 PhotoEditor: Loading new image...")
-        
+
         // Cancel any pending filter task
         currentFilterTask?.cancel()
         currentFilterTask = nil
-        
+
         isProcessing = true
         filteredImage = nil
         lastFilterResult = "Loading..."
-        
+
         Task {
             do {
-                if let data = try await item.loadTransferable(type: Data.self),
-                   let uiImage = UIImage(data: data) {
-                    
-                    print("✅ PhotoEditor: Image loaded: \(Int(uiImage.size.width))x\(Int(uiImage.size.height))")
-                    
-                    // Create both preview and full-res versions
-                    let maxPreviewDimension: CGFloat = 1200
-                    let maxFullResDimension: CGFloat = 3000
-                    
-                    let preview = uiImage.resizedIfNeeded(maxDimension: maxPreviewDimension)
-                    let fullRes = uiImage.resizedIfNeeded(maxDimension: maxFullResDimension)
-                    
-                    print("   Preview: \(Int(preview.size.width))x\(Int(preview.size.height))")
-                    print("   FullRes: \(Int(fullRes.size.width))x\(Int(fullRes.size.height))")
-                    
-                    await MainActor.run {
-                        self.previewImage = preview
-                        self.fullResImage = fullRes
-                        self.originalImage = preview
-                        self.isProcessing = false
-                        self.lastFilterResult = "Image loaded"
-                        
-                        // Apply current filter
-                        applyFilterDebounced(preset: selectedPreset)
-                    }
-                } else {
-                    await MainActor.run {
-                        self.isProcessing = false
-                        self.errorMessage = "Could not load the selected image."
-                        self.showErrorAlert = true
-                        self.lastFilterResult = "Load failed"
-                    }
+                // ★★★ FIX: Use PickedImage (custom Transferable) instead of Data.self ★★★
+                // This is more reliable on real devices
+                guard let pickedImage = try await item.loadTransferable(type: PickedImage.self) else {
+                    await handleLoadError(message: "Could not load the selected image. Please try another photo.")
+                    return
+                }
+
+                let uiImage = pickedImage.image
+                print("✅ PhotoEditor: Image loaded: \(Int(uiImage.size.width))x\(Int(uiImage.size.height))")
+
+                // Create both preview and full-res versions
+                let maxPreviewDimension: CGFloat = 1200
+                let maxFullResDimension: CGFloat = 3000
+
+                let preview = uiImage.resizedIfNeeded(maxDimension: maxPreviewDimension)
+                let fullRes = uiImage.resizedIfNeeded(maxDimension: maxFullResDimension)
+
+                print("   Preview: \(Int(preview.size.width))x\(Int(preview.size.height))")
+                print("   FullRes: \(Int(fullRes.size.width))x\(Int(fullRes.size.height))")
+
+                await MainActor.run {
+                    self.previewImage = preview
+                    self.fullResImage = fullRes
+                    self.originalImage = preview
+                    self.isProcessing = false
+                    self.lastFilterResult = "Image loaded"
+
+                    // Apply current filter
+                    applyFilterDebounced(preset: selectedPreset)
                 }
             } catch {
-                await MainActor.run {
-                    self.isProcessing = false
-                    self.errorMessage = "Error loading image: \(error.localizedDescription)"
-                    self.showErrorAlert = true
-                    self.lastFilterResult = "Error: \(error.localizedDescription)"
-                }
+                await handleLoadError(message: "Error loading image: \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Helper to handle loading errors on main thread
+    private func handleLoadError(message: String) async {
+        print("❌ PhotoEditor: \(message)")
+        await MainActor.run {
+            self.isProcessing = false
+            self.errorMessage = message
+            self.showErrorAlert = true
+            self.lastFilterResult = "Load failed"
         }
     }
     
