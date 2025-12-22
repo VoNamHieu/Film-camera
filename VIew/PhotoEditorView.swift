@@ -5,6 +5,26 @@
 import SwiftUI
 import PhotosUI
 import Photos
+import UniformTypeIdentifiers
+
+// MARK: - ★★★ FIX: Custom Transferable for reliable image loading on real devices ★★★
+
+struct PickedImage: Transferable {
+    let image: UIImage
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            guard let uiImage = UIImage(data: data) else {
+                throw TransferError.importFailed
+            }
+            return PickedImage(image: uiImage)
+        }
+    }
+
+    enum TransferError: Error {
+        case importFailed
+    }
+}
 
 // MARK: - Photo Editor View
 
@@ -313,7 +333,7 @@ struct PhotoEditorView: View {
     
     // MARK: - Image Loading
 
-    /// ★★★ FIXED: Added timeout and better error handling to prevent infinite loading ★★★
+    /// ★★★ FIXED: Use custom Transferable type for reliable loading on real devices ★★★
     private func loadImage(from item: PhotosPickerItem?) {
         guard let item = item else { return }
 
@@ -327,11 +347,16 @@ struct PhotoEditorView: View {
         filteredImage = nil
         lastFilterResult = "Loading..."
 
-        // ★★★ FIX: Use withThrowingTaskGroup for proper timeout handling ★★★
         Task {
             do {
-                let uiImage = try await loadImageWithTimeout(from: item, timeoutSeconds: 30)
+                // ★★★ FIX: Use PickedImage (custom Transferable) instead of Data.self ★★★
+                // This is more reliable on real devices
+                guard let pickedImage = try await item.loadTransferable(type: PickedImage.self) else {
+                    await handleLoadError(message: "Could not load the selected image. Please try another photo.")
+                    return
+                }
 
+                let uiImage = pickedImage.image
                 print("✅ PhotoEditor: Image loaded: \(Int(uiImage.size.width))x\(Int(uiImage.size.height))")
 
                 // Create both preview and full-res versions
@@ -354,52 +379,10 @@ struct PhotoEditorView: View {
                     // Apply current filter
                     applyFilterDebounced(preset: selectedPreset)
                 }
-            } catch ImageLoadError.timeout {
-                await handleLoadError(message: "Loading timed out. The image may be stored in iCloud. Please try again.")
-            } catch ImageLoadError.invalidData {
-                await handleLoadError(message: "Could not load the selected image. Please try another photo.")
-            } catch ImageLoadError.invalidFormat {
-                await handleLoadError(message: "The image format is not supported. Please try another photo.")
             } catch {
                 await handleLoadError(message: "Error loading image: \(error.localizedDescription)")
             }
         }
-    }
-
-    /// Load image with timeout using TaskGroup race pattern
-    private func loadImageWithTimeout(from item: PhotosPickerItem, timeoutSeconds: UInt64) async throws -> UIImage {
-        try await withThrowingTaskGroup(of: UIImage.self) { group in
-            // Task 1: Load the image
-            group.addTask {
-                guard let data = try await item.loadTransferable(type: Data.self) else {
-                    throw ImageLoadError.invalidData
-                }
-                guard let image = UIImage(data: data) else {
-                    throw ImageLoadError.invalidFormat
-                }
-                return image
-            }
-
-            // Task 2: Timeout
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeoutSeconds * 1_000_000_000)
-                throw ImageLoadError.timeout
-            }
-
-            // Return first successful result, cancel remaining tasks
-            guard let result = try await group.next() else {
-                throw ImageLoadError.invalidData
-            }
-            group.cancelAll()
-            return result
-        }
-    }
-
-    /// Image loading errors
-    private enum ImageLoadError: Error {
-        case timeout
-        case invalidData
-        case invalidFormat
     }
 
     /// Helper to handle loading errors on main thread
