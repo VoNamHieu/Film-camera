@@ -409,8 +409,9 @@ struct PhotoEditorView: View {
             
             print("🔄 PhotoEditor: Applying filter '\(preset.label)' to \(Int(original.size.width))x\(Int(original.size.height))")
             let startTime = CFAbsoluteTimeGetCurrent()
-            
+
             // Process on background thread
+            // ★ Use lightweight 2-pass preview for fast scrolling
             let filtered: UIImage? = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
                     // Check cancellation before heavy work
@@ -419,8 +420,9 @@ struct PhotoEditorView: View {
                         continuation.resume(returning: nil)
                         return
                     }
-                    
-                    let result = RenderEngine.shared.applyFilter(to: original, preset: preset)
+
+                    // ★ Use fast preview pipeline (Color Grading + Vignette only)
+                    let result = RenderEngine.shared.applyFilterPreview(to: original, preset: preset)
                     continuation.resume(returning: result)
                 }
             }

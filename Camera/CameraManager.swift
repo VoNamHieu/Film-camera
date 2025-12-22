@@ -477,8 +477,11 @@ class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
         let commandQueue = RenderEngine.shared.commandQueue
         
         // Create input texture from CGImage
+        // ★ FIX: .SRGB: false để tránh double gamma decode
+        // Metal mặc định auto-decode sRGB→Linear, nhưng shader đã có srgbToLinear3()
         let textureLoader = MTKTextureLoader(device: device)
         guard let inputTexture = try? textureLoader.newTexture(cgImage: cgImage, options: [
+            .SRGB: false,  // ★ CRITICAL: Giữ nguyên sRGB values, shader sẽ convert
             .textureUsage: NSNumber(value: MTLTextureUsage.shaderRead.rawValue),
             .textureStorageMode: NSNumber(value: MTLStorageMode.shared.rawValue)
         ]) else {

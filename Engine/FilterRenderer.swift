@@ -292,8 +292,67 @@ class FilterRenderer {
         commandBuffer.commit()
     }
 
+    // MARK: - ★ NEW: Lightweight Gallery Preview (2 passes only)
+
+    /// Ultra-fast preview for gallery scrolling - only Color Grading + Vignette
+    /// Full pipeline (13 passes) is only used when saving
+    func renderGalleryPreview(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) -> Bool {
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            print("❌ FilterRenderer: Failed to create command buffer")
+            return false
+        }
+
+        let texturePool = RenderEngine.shared.texturePool
+
+        guard let temp1 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
+              let temp2 = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm) else {
+            print("❌ FilterRenderer: Failed to allocate preview textures")
+            return false
+        }
+
+        pingPongTextures[0] = temp1
+        pingPongTextures[1] = temp2
+        pingPongIndex = 0
+
+        var currentInput = input
+
+        // ═══════════════════════════════════════════════════════════════
+        // GALLERY PREVIEW: Only 2 passes for maximum speed
+        // ═══════════════════════════════════════════════════════════════
+
+        // PASS 1: Color Grading (includes LUT - the most important!)
+        if let result = applyColorGrading(input: currentInput, preset: preset, commandBuffer: commandBuffer) {
+            currentInput = result
+        }
+
+        // PASS 2: Vignette (lightweight, adds depth)
+        if preset.vignette.enabled {
+            if let result = applyVignette(input: currentInput, config: preset.vignette, commandBuffer: commandBuffer) {
+                currentInput = result
+            }
+        }
+
+        // Final blit to output
+        blitToOutput(source: currentInput, destination: output, commandBuffer: commandBuffer)
+
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        if let error = commandBuffer.error {
+            print("❌ FilterRenderer: Gallery preview GPU error - \(error.localizedDescription)")
+            texturePool.recycle(temp1)
+            texturePool.recycle(temp2)
+            return false
+        }
+
+        texturePool.recycle(temp1)
+        texturePool.recycle(temp2)
+
+        return true
+    }
+
     // MARK: - Synchronous Render (for photo capture) with Debug
-    
+
     /// Render to texture SYNCHRONOUSLY with FULL quality pipeline
     func renderSync(input: MTLTexture, output: MTLTexture, preset: FilterPreset, commandQueue: MTLCommandQueue) -> Bool {
         print("🔄 FilterRenderer.renderSync: Starting for preset '\(preset.label)'")
