@@ -312,63 +312,104 @@ struct PhotoEditorView: View {
     }
     
     // MARK: - Image Loading
-    
+
+    /// ★★★ FIXED: Added timeout and better error handling to prevent infinite loading ★★★
     private func loadImage(from item: PhotosPickerItem?) {
         guard let item = item else { return }
-        
+
         print("📷 PhotoEditor: Loading new image...")
-        
+
         // Cancel any pending filter task
         currentFilterTask?.cancel()
         currentFilterTask = nil
-        
+
         isProcessing = true
         filteredImage = nil
         lastFilterResult = "Loading..."
-        
+
+        // ★★★ FIX: Use withThrowingTaskGroup for proper timeout handling ★★★
         Task {
             do {
-                if let data = try await item.loadTransferable(type: Data.self),
-                   let uiImage = UIImage(data: data) {
-                    
-                    print("✅ PhotoEditor: Image loaded: \(Int(uiImage.size.width))x\(Int(uiImage.size.height))")
-                    
-                    // Create both preview and full-res versions
-                    let maxPreviewDimension: CGFloat = 1200
-                    let maxFullResDimension: CGFloat = 3000
-                    
-                    let preview = uiImage.resizedIfNeeded(maxDimension: maxPreviewDimension)
-                    let fullRes = uiImage.resizedIfNeeded(maxDimension: maxFullResDimension)
-                    
-                    print("   Preview: \(Int(preview.size.width))x\(Int(preview.size.height))")
-                    print("   FullRes: \(Int(fullRes.size.width))x\(Int(fullRes.size.height))")
-                    
-                    await MainActor.run {
-                        self.previewImage = preview
-                        self.fullResImage = fullRes
-                        self.originalImage = preview
-                        self.isProcessing = false
-                        self.lastFilterResult = "Image loaded"
-                        
-                        // Apply current filter
-                        applyFilterDebounced(preset: selectedPreset)
-                    }
-                } else {
-                    await MainActor.run {
-                        self.isProcessing = false
-                        self.errorMessage = "Could not load the selected image."
-                        self.showErrorAlert = true
-                        self.lastFilterResult = "Load failed"
-                    }
-                }
-            } catch {
+                let uiImage = try await loadImageWithTimeout(from: item, timeoutSeconds: 30)
+
+                print("✅ PhotoEditor: Image loaded: \(Int(uiImage.size.width))x\(Int(uiImage.size.height))")
+
+                // Create both preview and full-res versions
+                let maxPreviewDimension: CGFloat = 1200
+                let maxFullResDimension: CGFloat = 3000
+
+                let preview = uiImage.resizedIfNeeded(maxDimension: maxPreviewDimension)
+                let fullRes = uiImage.resizedIfNeeded(maxDimension: maxFullResDimension)
+
+                print("   Preview: \(Int(preview.size.width))x\(Int(preview.size.height))")
+                print("   FullRes: \(Int(fullRes.size.width))x\(Int(fullRes.size.height))")
+
                 await MainActor.run {
+                    self.previewImage = preview
+                    self.fullResImage = fullRes
+                    self.originalImage = preview
                     self.isProcessing = false
-                    self.errorMessage = "Error loading image: \(error.localizedDescription)"
-                    self.showErrorAlert = true
-                    self.lastFilterResult = "Error: \(error.localizedDescription)"
+                    self.lastFilterResult = "Image loaded"
+
+                    // Apply current filter
+                    applyFilterDebounced(preset: selectedPreset)
                 }
+            } catch ImageLoadError.timeout {
+                await handleLoadError(message: "Loading timed out. The image may be stored in iCloud. Please try again.")
+            } catch ImageLoadError.invalidData {
+                await handleLoadError(message: "Could not load the selected image. Please try another photo.")
+            } catch ImageLoadError.invalidFormat {
+                await handleLoadError(message: "The image format is not supported. Please try another photo.")
+            } catch {
+                await handleLoadError(message: "Error loading image: \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Load image with timeout using TaskGroup race pattern
+    private func loadImageWithTimeout(from item: PhotosPickerItem, timeoutSeconds: UInt64) async throws -> UIImage {
+        try await withThrowingTaskGroup(of: UIImage.self) { group in
+            // Task 1: Load the image
+            group.addTask {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    throw ImageLoadError.invalidData
+                }
+                guard let image = UIImage(data: data) else {
+                    throw ImageLoadError.invalidFormat
+                }
+                return image
+            }
+
+            // Task 2: Timeout
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutSeconds * 1_000_000_000)
+                throw ImageLoadError.timeout
+            }
+
+            // Return first successful result, cancel remaining tasks
+            guard let result = try await group.next() else {
+                throw ImageLoadError.invalidData
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
+    /// Image loading errors
+    private enum ImageLoadError: Error {
+        case timeout
+        case invalidData
+        case invalidFormat
+    }
+
+    /// Helper to handle loading errors on main thread
+    private func handleLoadError(message: String) async {
+        print("❌ PhotoEditor: \(message)")
+        await MainActor.run {
+            self.isProcessing = false
+            self.errorMessage = message
+            self.showErrorAlert = true
+            self.lastFilterResult = "Load failed"
         }
     }
     
