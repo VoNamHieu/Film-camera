@@ -150,22 +150,68 @@ class FilterRenderer {
         commandBuffer.commit()
     }
     
-    // MARK: - ★★★ FIXED V3: Scale Texture Pass with CORRECT Neutral Values ★★★
-    
-    /// Scales input texture to match ping-pong buffer size using color grading shader as passthrough
+    // MARK: - ★★★ FIXED V4: Aspect-Fill Scale with Correct Aspect Ratio ★★★
+
+    /// Scales input texture to match ping-pong buffer size using ASPECT-FILL
+    /// This maintains the correct aspect ratio by cropping (not stretching)
     ///
-    /// CRITICAL FIX: The colorGradingFragment shader applies these formulas:
-    ///   contrast:   rgb = (rgb - 0.5) * (1.0 + p.contrast) + 0.5
-    ///   saturation: rgb = mix(luma, rgb, 1.0 + p.saturation)
+    /// Uses vertexAspectFill shader to calculate UV correction based on:
+    ///   inputAspect  = input.width / input.height
+    ///   outputAspect = output.width / output.height
     ///
-    /// For TRUE PASSTHROUGH (no color change):
-    ///   contrast = 0.0   → (1.0 + 0.0) = 1.0 multiplier ✓ NEUTRAL
-    ///   saturation = 0.0 → (1.0 + 0.0) = 1.0 multiplier ✓ NEUTRAL
-    ///
-    /// WRONG (old code):
-    ///   contrast = 1.0   → (1.0 + 1.0) = 2.0 multiplier ✗ DOUBLES CONTRAST!
-    ///   saturation = 1.0 → (1.0 + 1.0) = 2.0 multiplier ✗ DOUBLES SATURATION!
+    /// Result: Objects (InstantFrame, Vignette, etc.) maintain correct proportions
     private func scaleTexture(input: MTLTexture, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.aspectFillScalePipeline,
+              let output = getNextOutputTexture() else {
+            // Fallback to old pipeline if aspect-fill not available
+            return scaleTextureFallback(input: input, commandBuffer: commandBuffer)
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        // ★★★ NEW: Pass aspect ratio params to vertex shader ★★★
+        var aspectParams = AspectScaleParams()
+        aspectParams.inputAspect = Float(input.width) / Float(input.height)
+        aspectParams.outputAspect = Float(output.width) / Float(output.height)
+        renderEncoder.setVertexBytes(&aspectParams, length: MemoryLayout<AspectScaleParams>.stride, index: 0)
+
+        // Fragment shader params: neutral passthrough
+        var params = ColorGradingParams()
+        params.exposure = 0.0
+        params.contrast = 0.0
+        params.highlights = 0.0
+        params.shadows = 0.0
+        params.whites = 0.0
+        params.blacks = 0.0
+        params.saturation = 0.0
+        params.vibrance = 0.0
+        params.temperature = 0.0
+        params.tint = 0.0
+        params.fade = 0.0
+        params.clarity = 0.0
+        params.shadowsHue = 0.0
+        params.shadowsSat = 0.0
+        params.highlightsHue = 0.0
+        params.highlightsSat = 0.0
+        params.splitBalance = 0.0
+        params.midtoneProtection = 0.5
+        params.selectiveColorCount = 0
+        params.lutIntensity = 0.0
+        params.useLUT = 0
+
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    // Fallback for when aspectFillScalePipeline is not available
+    private func scaleTextureFallback(input: MTLTexture, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         guard let pipeline = RenderEngine.shared.colorGradingPipeline,
               let output = getNextOutputTexture() else {
             return nil
@@ -177,30 +223,29 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        // ★★★ FIXED V3: ALL parameters set to TRUE NEUTRAL values ★★★
         var params = ColorGradingParams()
-        params.exposure = 0.0           // 0.0 = no change (pow(2, 0) = 1.0)
-        params.contrast = 0.0           // ★ FIX: 0.0 is neutral (1.0 + 0.0 = 1.0)
+        params.exposure = 0.0
+        params.contrast = 0.0
         params.highlights = 0.0
         params.shadows = 0.0
         params.whites = 0.0
         params.blacks = 0.0
-        params.saturation = 0.0         // ★ FIX: 0.0 is neutral (1.0 + 0.0 = 1.0)
+        params.saturation = 0.0
         params.vibrance = 0.0
         params.temperature = 0.0
         params.tint = 0.0
         params.fade = 0.0
         params.clarity = 0.0
         params.shadowsHue = 0.0
-        params.shadowsSat = 0.0         // 0.0 = no split tone
+        params.shadowsSat = 0.0
         params.highlightsHue = 0.0
-        params.highlightsSat = 0.0      // 0.0 = no split tone
+        params.highlightsSat = 0.0
         params.splitBalance = 0.0
         params.midtoneProtection = 0.5
-        params.selectiveColorCount = 0  // No selective color adjustments
-        params.lutIntensity = 0.0       // 0.0 = no LUT applied
-        params.useLUT = 0               // Explicitly disable LUT
-        
+        params.selectiveColorCount = 0
+        params.lutIntensity = 0.0
+        params.useLUT = 0
+
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ColorGradingParams>.stride, index: 0)
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()

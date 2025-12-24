@@ -169,4 +169,11 @@ typedef struct {
     float toeStrength;
 } ToneMappingParams;
 
+// ★★★ NEW: ASPECT RATIO SCALING ★★★
+// Used for aspect-fill scaling to prevent object stretching
+typedef struct {
+    float inputAspect;      // Input texture aspect ratio (width/height)
+    float outputAspect;     // Output drawable aspect ratio (width/height)
+} AspectScaleParams;
+
 #endif /* ShaderTypes_h */

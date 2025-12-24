@@ -40,7 +40,10 @@ class RenderEngine {
     
     // Tone Mapping
     private(set) var toneMappingPipeline: MTLRenderPipelineState?
-    
+
+    // ★★★ NEW: Aspect-Fill Scaling Pipeline ★★★
+    private(set) var aspectFillScalePipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -126,6 +129,10 @@ class RenderEngine {
         // Tone Mapping
         toneMappingPipeline = createPipeline(vertex: vertexFunction, fragmentName: "toneMappingFragment")
 
+        // ★★★ NEW: Aspect-Fill Scaling Pipeline ★★★
+        // Uses vertexAspectFill for aspect-correct scaling
+        aspectFillScalePipeline = createAspectFillPipeline(fragmentName: "colorGradingFragment")
+
         printPipelineStatus()
     }
     
@@ -156,6 +163,39 @@ class RenderEngine {
     
     private func createPipelineWithTwoTextures(vertex: MTLFunction?, fragmentName: String) -> MTLRenderPipelineState? {
         return createPipeline(vertex: vertex, fragmentName: fragmentName)
+    }
+
+    // ★★★ NEW: Create pipeline with aspect-fill vertex shader ★★★
+    private func createAspectFillPipeline(fragmentName: String) -> MTLRenderPipelineState? {
+        guard let vertexFunction = library.makeFunction(name: "vertexAspectFill") else {
+            let error = "vertexAspectFill shader not found in Metal library"
+            print("⚠️ RenderEngine: \(error)")
+            initializationErrors.append(error)
+            return nil
+        }
+
+        guard let fragmentFunction = library.makeFunction(name: fragmentName) else {
+            let error = "\(fragmentName) shader not found for aspect-fill pipeline"
+            print("⚠️ RenderEngine: \(error)")
+            initializationErrors.append(error)
+            return nil
+        }
+
+        let descriptor = MTLRenderPipelineDescriptor()
+        descriptor.vertexFunction = vertexFunction
+        descriptor.fragmentFunction = fragmentFunction
+        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+
+        do {
+            let pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+            print("✅ RenderEngine: aspectFillScale pipeline created")
+            return pipeline
+        } catch {
+            let errorMsg = "Failed to create aspectFillScale pipeline: \(error.localizedDescription)"
+            print("❌ RenderEngine: \(errorMsg)")
+            initializationErrors.append(errorMsg)
+            return nil
+        }
     }
     
     // ★★★ NEW: Validate critical pipelines ★★★
@@ -215,6 +255,9 @@ class RenderEngine {
         print("")
         print("   Tone Mapping:")
         print("      toneMapping:     \(toneMappingPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Aspect-Fill Scaling:")
+        print("      aspectFillScale: \(aspectFillScalePipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {
