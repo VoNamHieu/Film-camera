@@ -48,6 +48,40 @@ vertex VertexOut vertexPassthrough(uint vertexID [[vertex_id]]) {
     return out;
 }
 
+// ★★★ NEW: Aspect-Fill Vertex Shader ★★★
+// Scales UV to perform aspect-fill (crop to fill, maintain aspect ratio)
+vertex VertexOut vertexAspectFill(uint vertexID [[vertex_id]],
+                                   constant AspectScaleParams &aspect [[buffer(0)]]) {
+    float2 positions[4] = {
+        float2(-1, -1), float2(1, -1), float2(-1, 1), float2(1, 1)
+    };
+    float2 texCoords[4] = {
+        float2(0, 1), float2(1, 1), float2(0, 0), float2(1, 0)
+    };
+
+    VertexOut out;
+    out.position = float4(positions[vertexID], 0, 1);
+
+    // Calculate aspect-fill UV correction
+    float2 uv = texCoords[vertexID];
+
+    float inputAspect = aspect.inputAspect;
+    float outputAspect = aspect.outputAspect;
+
+    if (outputAspect > inputAspect) {
+        // Output is wider: crop top/bottom
+        float scale = outputAspect / inputAspect;
+        uv.y = (uv.y - 0.5) / scale + 0.5;
+    } else if (outputAspect < inputAspect) {
+        // Output is taller: crop left/right
+        float scale = inputAspect / outputAspect;
+        uv.x = (uv.x - 0.5) / scale + 0.5;
+    }
+
+    out.texCoord = uv;
+    return out;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
