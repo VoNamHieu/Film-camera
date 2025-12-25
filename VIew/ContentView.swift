@@ -87,12 +87,12 @@ struct ContentView: View {
 
     private var cameraContentView: some View {
         ZStack {
-            // ★★★ FIX: Check Metal availability and fallback to basic preview ★★★
-            if RenderEngine.isMetalAvailable {
+            // ★★★ FIX: Check if RenderEngine is fully available (Metal + shaders) ★★★
+            if RenderEngine.isAvailable {
                 MetalPreviewView(cameraManager: cameraManager, selectedPreset: $selectedPreset)
                     .ignoresSafeArea()
             } else {
-                // Fallback for devices without Metal support
+                // Fallback when Metal or shaders unavailable
                 CameraPreviewView(cameraManager: cameraManager)
                     .ignoresSafeArea()
             }
