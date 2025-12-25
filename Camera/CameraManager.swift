@@ -640,10 +640,16 @@ class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
     }
     
     // MARK: - Apply Full Quality Filters (13 passes)
-    
+
     private func applyFullQualityFilters(to image: UIImage) -> UIImage? {
         guard let cgImage = image.cgImage else { return nil }
-        
+
+        // ★★★ FIX: Check if RenderEngine is available before using it ★★★
+        guard RenderEngine.isAvailable else {
+            print("⚠️ PhotoCaptureProcessor: RenderEngine not available, returning original image")
+            return image
+        }
+
         let device = RenderEngine.shared.device
         let commandQueue = RenderEngine.shared.commandQueue
         
