@@ -8,8 +8,8 @@
 import Foundation
 import UIKit
 import Photos
+import Combine
 
-@MainActor
 final class GalleryManager: ObservableObject {
 
     // MARK: - Singleton
@@ -21,7 +21,7 @@ final class GalleryManager: ObservableObject {
     @Published private(set) var photos: [CapturedPhoto] = []
     @Published private(set) var isLoading = false
 
-    // MARK: - Directory Structure
+    // MARK: - Directory Structure (nonisolated for static access)
 
     static var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
