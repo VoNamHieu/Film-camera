@@ -512,15 +512,30 @@ class CameraManager: NSObject, ObservableObject {
         recordingPreset = preset
 
         // Get video dimensions from active format
-
         var videoSize = CGSize(width: 1920, height: 1080)
 
         if let formatDescription = videoDeviceInput?.device.activeFormat.formatDescription {
-
             let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
+            let width = CGFloat(dimensions.width)
+            let height = CGFloat(dimensions.height)
 
-            videoSize = CGSize(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
-
+            // ★★★ FIX: Check video rotation angle to determine actual frame orientation ★★★
+            // MetalPreviewView sets videoRotationAngle = 90 for portrait, which swaps width/height
+            if let videoOutput = session.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first,
+               let connection = videoOutput.connection(with: .video) {
+                let rotationAngle = connection.videoRotationAngle
+                // If rotation is 90 or 270 degrees, width and height are swapped
+                if rotationAngle == 90 || rotationAngle == 270 {
+                    videoSize = CGSize(width: height, height: width)
+                    print("📐 CameraManager: Portrait mode - video size \(Int(height))×\(Int(width))")
+                } else {
+                    videoSize = CGSize(width: width, height: height)
+                    print("📐 CameraManager: Landscape mode - video size \(Int(width))×\(Int(height))")
+                }
+            } else {
+                // Fallback: assume portrait mode for iOS devices
+                videoSize = CGSize(width: height, height: width)
+            }
         }
 
         videoRecorder?.startRecording(preset: preset, size: videoSize)
