@@ -8,13 +8,49 @@ import MetalKit
 
 /// Singleton Metal rendering engine
 class RenderEngine {
-    static let shared = RenderEngine()
+    // ★★★ FIX: Use optional singleton to handle initialization failures ★★★
+    private static var _shared: RenderEngine?
+    private static let initLock = NSLock()
+    private static var initAttempted = false
 
-    // ★★★ FIX: Check if Metal is available before accessing shared instance ★★★
+    static var shared: RenderEngine {
+        initLock.lock()
+        defer { initLock.unlock() }
+
+        if let existing = _shared {
+            return existing
+        }
+
+        if !initAttempted {
+            initAttempted = true
+            _shared = RenderEngine()
+        }
+
+        // Return existing or crash with helpful message
+        guard let instance = _shared else {
+            fatalError("RenderEngine failed to initialize. Check Metal shader compilation and target membership.")
+        }
+        return instance
+    }
+
+    // ★★★ FIX: Safe way to check if engine is ready ★★★
+    static var isAvailable: Bool {
+        initLock.lock()
+        defer { initLock.unlock() }
+
+        if _shared != nil { return true }
+        if initAttempted { return false }
+
+        // Try to initialize
+        initAttempted = true
+        _shared = RenderEngine()
+        return _shared != nil
+    }
+
     static var isMetalAvailable: Bool {
         return MTLCreateSystemDefaultDevice() != nil
     }
-    
+
     let device: MTLDevice
     let commandQueue: MTLCommandQueue
     let library: MTLLibrary
@@ -64,25 +100,31 @@ class RenderEngine {
     private(set) var isInitialized = false
     private(set) var initializationErrors: [String] = []
     
-    private init() {
+    // ★★★ FIX: Failable init to handle errors gracefully ★★★
+    private init?() {
         guard let device = MTLCreateSystemDefaultDevice() else {
-            fatalError("Metal is not supported on this device")
+            print("❌ RenderEngine: Metal is not supported on this device")
+            return nil
         }
         self.device = device
-        
+
         guard let commandQueue = device.makeCommandQueue() else {
-            fatalError("Could not create command queue")
+            print("❌ RenderEngine: Could not create command queue")
+            return nil
         }
         self.commandQueue = commandQueue
-        
+
         guard let library = device.makeDefaultLibrary() else {
-            fatalError("Could not load Metal library")
+            print("❌ RenderEngine: Could not load Metal library - check that Shaders.metal is added to target")
+            return nil
         }
         self.library = library
-        
+
         self.texturePool = TexturePool(device: device)
         self.textureLoader = MTKTextureLoader(device: device)
-        
+
+        print("✅ RenderEngine: Core initialization successful")
+
         setupPipelines()
         validatePipelines()
     }
