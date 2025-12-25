@@ -446,8 +446,13 @@ struct PhotoEditorView: View {
                     }
 
                     // ★ Use fast preview pipeline (Color Grading + Vignette only)
-                    let result = RenderEngine.shared.applyFilterPreview(to: original, preset: preset)
-                    continuation.resume(returning: result)
+                    // ★★★ FIX: Check RenderEngine availability ★★★
+                    if RenderEngine.isAvailable {
+                        let result = RenderEngine.shared.applyFilterPreview(to: original, preset: preset)
+                        continuation.resume(returning: result)
+                    } else {
+                        continuation.resume(returning: nil)
+                    }
                 }
             }
             
@@ -498,6 +503,12 @@ struct PhotoEditorView: View {
             let imageToSave: UIImage = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
                     print("   Applying filter to full-res image...")
+                    // ★★★ FIX: Check RenderEngine availability ★★★
+                    guard RenderEngine.isAvailable else {
+                        print("   ⚠️ RenderEngine not available, using original")
+                        continuation.resume(returning: fullRes)
+                        return
+                    }
                     if let filtered = RenderEngine.shared.applyFilter(to: fullRes, preset: selectedPreset) {
                         print("   ✅ Full-res filter applied")
                         continuation.resume(returning: filtered)

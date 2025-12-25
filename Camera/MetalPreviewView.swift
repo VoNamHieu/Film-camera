@@ -46,16 +46,20 @@ struct MetalPreviewView: UIViewRepresentable {
                 }
             }
         }
-        
+
+        // ★★★ FIX: Keep weak reference to cameraManager for frame forwarding ★★★
+        weak var cameraManager: CameraManager?
+
         private var currentPixelBuffer: CVPixelBuffer?
+        private var currentSampleBuffer: CMSampleBuffer?
         private var textureCache: CVMetalTextureCache?
         private let filterRenderer: FilterRenderer
         private var videoOutputAdded = false
-        
+
         // Orientation tracking
         private var orientationNeedsUpdate = true
         private var lastConfiguredOrientation: CGFloat = 90
-        
+
         // Frame timing for debugging
         private var lastFrameTime: CFAbsoluteTime = 0
         private var frameCount: Int = 0
@@ -66,8 +70,16 @@ struct MetalPreviewView: UIViewRepresentable {
             self.filterRenderer = FilterRenderer()
             super.init()
 
-            CVMetalTextureCacheCreate(nil, nil, RenderEngine.shared.device, nil, &textureCache)
-            
+            // ★★★ FIX: Validate texture cache creation ★★★
+            var cache: CVMetalTextureCache?
+            let status = CVMetalTextureCacheCreate(nil, nil, RenderEngine.shared.device, nil, &cache)
+            if status == kCVReturnSuccess {
+                textureCache = cache
+                print("✅ MetalPreviewView: Texture cache created")
+            } else {
+                print("❌ MetalPreviewView: Failed to create texture cache, status: \(status)")
+            }
+
             // Observe orientation changes
             NotificationCenter.default.addObserver(
                 self,
@@ -86,25 +98,30 @@ struct MetalPreviewView: UIViewRepresentable {
         }
 
         func setupVideoOutput(cameraManager: CameraManager) {
+            // ★★★ FIX: Store reference for frame forwarding ★★★
+            self.cameraManager = cameraManager
+
             let existingOutputs = cameraManager.session.outputs.compactMap { $0 as? AVCaptureVideoDataOutput }
 
             if !existingOutputs.isEmpty {
                 if let existingOutput = existingOutputs.first {
-                    existingOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output", qos: .userInteractive))
-                    
+                    // ★★★ FIX: Take over delegate but forward frames when recording ★★★
+                    existingOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.preview", qos: .userInteractive))
+
                     if let connection = existingOutput.connection(with: .video) {
                         configureVideoOrientation(connection)
                     }
-                    
+
                     videoOutputAdded = true
+                    print("✅ MetalPreviewView: Using existing video output")
                 }
                 return
             }
 
-            // ★★★ OPTIMIZATION A: Configure video output ★★★
+            // Create new video output if none exists
             let videoOutput = AVCaptureVideoDataOutput()
-            videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.output", qos: .userInteractive))
-            
+            videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "video.preview", qos: .userInteractive))
+
             // Request BGRA format for optimal Metal performance
             videoOutput.videoSettings = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
@@ -112,23 +129,16 @@ struct MetalPreviewView: UIViewRepresentable {
             videoOutput.alwaysDiscardsLateVideoFrames = true
 
             cameraManager.session.beginConfiguration()
-            
-            // ★★★ Set session preset to 1080p for preview (Option A) ★★★
-            // This reduces pixels from 12MP (4032×3024) to 2MP (1920×1080)
-            // = 75% reduction in GPU workload
-            if cameraManager.session.canSetSessionPreset(.hd1920x1080) {
-                cameraManager.session.sessionPreset = .hd1920x1080
-                print("🎬 MetalPreviewView: Set session to 1080p for preview")
-            }
-            
+
             if cameraManager.session.canAddOutput(videoOutput) {
                 cameraManager.session.addOutput(videoOutput)
-                
+
                 if let connection = videoOutput.connection(with: .video) {
                     configureVideoOrientation(connection)
                 }
-                
+
                 videoOutputAdded = true
+                print("✅ MetalPreviewView: Created new video output")
             }
             cameraManager.session.commitConfiguration()
         }
@@ -152,11 +162,16 @@ struct MetalPreviewView: UIViewRepresentable {
             if orientationNeedsUpdate {
                 configureVideoOrientation(connection)
             }
-            
+
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
             currentPixelBuffer = pixelBuffer
+
+            // ★★★ FIX: Forward frames to CameraManager for video recording ★★★
+            if let manager = cameraManager, manager.isRecording {
+                manager.handleVideoFrame(sampleBuffer)
+            }
         }
-        
+
         func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
             droppedFrameCount += 1
             #if DEBUG

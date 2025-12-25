@@ -23,7 +23,7 @@ enum CameraPermissionStatus {
 class CameraManager: NSObject, ObservableObject {
     
     // MARK: - Published Properties
-    
+
     @Published var isSessionRunning = false
     @Published var currentPosition: AVCaptureDevice.Position = .back
     @Published var currentZoomFactor: CGFloat = 1.0
@@ -31,25 +31,39 @@ class CameraManager: NSObject, ObservableObject {
     @Published var lastCapturedImage: UIImage?
     @Published var flashMode: AVCaptureDevice.FlashMode = .off
     @Published var exposureCompensation: Float = 0.0
-    
+
+    // Video recording state
+    @Published var isRecording = false
+    @Published var recordingDuration: TimeInterval = 0
+
     // Permission and error handling
     @Published var permissionStatus: CameraPermissionStatus = .notDetermined
     @Published var isInterrupted = false
     @Published var error: Error?
-    
+
     // MARK: - Session
-    
+
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "camera.session.queue", qos: .userInitiated)
-    
+    private let videoDataQueue = DispatchQueue(label: "camera.video.data", qos: .userInteractive)
+    private let audioDataQueue = DispatchQueue(label: "camera.audio.data", qos: .userInteractive)
+
     // MARK: - Capture
-    
+
     private var photoOutput: AVCapturePhotoOutput?
+    private var videoDataOutput: AVCaptureVideoDataOutput?
+    private var audioDataOutput: AVCaptureAudioDataOutput?
+    private var audioDeviceInput: AVCaptureDeviceInput?
     private var videoDeviceInput: AVCaptureDeviceInput?
     private var inProgressPhotoCaptures: [Int64: PhotoCaptureProcessor] = [:]
-    
+
+    // MARK: - Video Recording
+
+    private var videoRecorder: VideoRecorder?
+    private var recordingPreset: FilterPreset?
+
     // MARK: - Filter Rendering
-    
+
     private let filterRenderer = FilterRenderer()
     private var currentPreset: FilterPreset?
     
@@ -105,21 +119,21 @@ class CameraManager: NSObject, ObservableObject {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(sessionWasInterrupted),
-            name: .AVCaptureSessionWasInterrupted,
+            name: AVCaptureSession.wasInterruptedNotification,
             object: session
         )
-        
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(sessionInterruptionEnded),
-            name: .AVCaptureSessionInterruptionEnded,
+            name: AVCaptureSession.interruptionEndedNotification,
             object: session
         )
-        
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(sessionRuntimeError),
-            name: .AVCaptureSessionRuntimeError,
+            name: AVCaptureSession.runtimeErrorNotification,
             object: session
         )
     }
@@ -167,8 +181,8 @@ class CameraManager: NSObject, ObservableObject {
     
     private func configureSession() {
         session.beginConfiguration()
-        session.sessionPreset = .photo
-        
+        session.sessionPreset = .high // Changed from .photo for video support
+
         // Add video input
         guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let videoInput = try? AVCaptureDeviceInput(device: videoDevice) else {
@@ -176,30 +190,89 @@ class CameraManager: NSObject, ObservableObject {
             session.commitConfiguration()
             return
         }
-        
+
         if session.canAddInput(videoInput) {
             session.addInput(videoInput)
             videoDeviceInput = videoInput
         }
-        
+
+        // ★★★ FIX: Check audio permission before adding audio input ★★★
+        // TCC will crash app if we access microphone without permission!
+        let audioStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        if audioStatus == .authorized {
+            if let audioDevice = AVCaptureDevice.default(for: .audio),
+               let audioInput = try? AVCaptureDeviceInput(device: audioDevice) {
+                if session.canAddInput(audioInput) {
+                    session.addInput(audioInput)
+                    audioDeviceInput = audioInput
+                    print("✅ CameraManager: Audio input added")
+                }
+            }
+        } else if audioStatus == .notDetermined {
+            // Request audio permission asynchronously - will be available next session
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                print("🎤 CameraManager: Audio permission \(granted ? "granted" : "denied")")
+            }
+        } else {
+            print("⚠️ CameraManager: Audio permission denied/restricted - video will have no audio")
+        }
+
         // Add photo output
         let photoOutput = AVCapturePhotoOutput()
         photoOutput.maxPhotoQualityPrioritization = .quality
-        
+
         if session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
             self.photoOutput = photoOutput
         }
-        
+
+        // ★★★ FIX: Create video data output but DON'T set delegate ★★★
+        // MetalPreviewView will take over and forward frames when recording
+        let videoDataOutput = AVCaptureVideoDataOutput()
+        videoDataOutput.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+        videoDataOutput.alwaysDiscardsLateVideoFrames = true
+        // NOTE: Delegate will be set by MetalPreviewView
+
+        if session.canAddOutput(videoDataOutput) {
+            session.addOutput(videoDataOutput)
+            self.videoDataOutput = videoDataOutput
+            print("✅ CameraManager: Video data output added")
+        } else {
+            print("⚠️ CameraManager: Could not add video data output")
+        }
+
+        // Add audio data output for recording
+        let audioDataOutput = AVCaptureAudioDataOutput()
+        audioDataOutput.setSampleBufferDelegate(self, queue: audioDataQueue)
+
+        if session.canAddOutput(audioDataOutput) {
+            session.addOutput(audioDataOutput)
+            self.audioDataOutput = audioDataOutput
+            print("✅ CameraManager: Audio data output added")
+        } else {
+            print("⚠️ CameraManager: Could not add audio data output")
+        }
+
         session.commitConfiguration()
-        
+
+        // ★★★ FIX: Validate video recorder initialization ★★★
+        if let recorder = VideoRecorder() {
+            videoRecorder = recorder
+            videoRecorder?.delegate = self
+            print("✅ CameraManager: VideoRecorder initialized")
+        } else {
+            print("❌ CameraManager: Failed to initialize VideoRecorder - video recording will be unavailable")
+        }
+
         // Start session
         session.startRunning()
-        
+
         DispatchQueue.main.async { [weak self] in
             self?.isSessionRunning = true
         }
-        
+
         print("✅ CameraManager: Session configured and running")
     }
     
@@ -316,56 +389,64 @@ class CameraManager: NSObject, ObservableObject {
     }
     
     // MARK: - Photo Capture with FULL Quality Pipeline
-    
+
+    /// Capture photo and return only filtered result (legacy method)
     func capturePhoto(preset: FilterPreset, completion: @escaping (UIImage?) -> Void) {
+        capturePhotoWithOriginal(preset: preset) { _, filtered in
+            completion(filtered)
+        }
+    }
+
+    /// Capture photo and return both original and filtered images (for gallery saving)
+    func capturePhotoWithOriginal(preset: FilterPreset, completion: @escaping (UIImage?, UIImage?) -> Void) {
         guard let photoOutput = photoOutput else {
             print("❌ CameraManager: Photo output not available")
-            completion(nil)
+            completion(nil, nil)
             return
         }
-        
+
         DispatchQueue.main.async { [weak self] in
             self?.isCapturing = true
         }
-        
+
         // Store current preset for capture processing
         currentPreset = preset
-        
+
         // Configure photo settings
         var photoSettings = AVCapturePhotoSettings()
-        
+
         // Use HEIF if available, otherwise JPEG
         if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
             photoSettings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
         }
-        
+
         photoSettings.flashMode = flashMode
-        
+
         let uniqueID = photoSettings.uniqueID
 
         // Create processor for this capture
         let processor = PhotoCaptureProcessor(
             preset: preset,
             filterRenderer: filterRenderer,
-            completion: { [weak self] image in
+            completion: { [weak self] original, filtered in
                 DispatchQueue.main.async {
                     self?.isCapturing = false
-                    self?.lastCapturedImage = image
-                    
+                    self?.lastCapturedImage = filtered
+
                     // Clean up processor using captured uniqueID (not processor reference)
                     self?.inProgressPhotoCaptures.removeValue(forKey: uniqueID)
-                    
-                    completion(image)
+
+                    completion(original, filtered)
                 }
             }
         )
 
         // Store processor
         inProgressPhotoCaptures[uniqueID] = processor
-        
+
         // Capture photo
         photoOutput.capturePhoto(with: photoSettings, delegate: processor)
-        
+
         print("📸 CameraManager: Capturing photo with preset '\(preset.label)'")
     }
     
@@ -412,10 +493,127 @@ class CameraManager: NSObject, ObservableObject {
         sessionQueue.async { [weak self] in
             guard let self = self, self.session.isRunning else { return }
             self.session.stopRunning()
-            
+
             DispatchQueue.main.async {
                 self.isSessionRunning = false
             }
+        }
+    }
+
+    // MARK: - Video Recording
+
+    /// Start video recording with the specified filter preset
+    func startVideoRecording(preset: FilterPreset) {
+        guard !isRecording else {
+            print("⚠️ CameraManager: Already recording")
+            return
+        }
+
+        recordingPreset = preset
+
+        // Get video dimensions from active format
+        var videoSize = CGSize(width: 1920, height: 1080)
+
+        if let formatDescription = videoDeviceInput?.device.activeFormat.formatDescription {
+            let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
+            let width = CGFloat(dimensions.width)
+            let height = CGFloat(dimensions.height)
+
+            // ★★★ FIX: Check video rotation angle to determine actual frame orientation ★★★
+            // MetalPreviewView sets videoRotationAngle = 90 for portrait, which swaps width/height
+            if let videoOutput = session.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first,
+               let connection = videoOutput.connection(with: .video) {
+                let rotationAngle = connection.videoRotationAngle
+                // If rotation is 90 or 270 degrees, width and height are swapped
+                if rotationAngle == 90 || rotationAngle == 270 {
+                    videoSize = CGSize(width: height, height: width)
+                    print("📐 CameraManager: Portrait mode - video size \(Int(height))×\(Int(width))")
+                } else {
+                    videoSize = CGSize(width: width, height: height)
+                    print("📐 CameraManager: Landscape mode - video size \(Int(width))×\(Int(height))")
+                }
+            } else {
+                // Fallback: assume portrait mode for iOS devices
+                videoSize = CGSize(width: height, height: width)
+            }
+        }
+
+        videoRecorder?.startRecording(preset: preset, size: videoSize)
+    }
+
+    /// Stop video recording and save to photo library
+    func stopVideoRecording() {
+        guard isRecording else { return }
+        videoRecorder?.stopRecording()
+    }
+
+    /// Get the last recorded video URL
+    var lastRecordedVideoURL: URL? {
+        return nil // Will be provided via delegate
+    }
+
+    // ★★★ FIX: Public method to receive video frames from MetalPreviewView ★★★
+    func handleVideoFrame(_ sampleBuffer: CMSampleBuffer) {
+        guard isRecording else { return }
+        videoRecorder?.processVideoFrame(sampleBuffer)
+    }
+}
+
+// MARK: - AVCaptureAudioDataOutputSampleBufferDelegate
+
+extension CameraManager: AVCaptureAudioDataOutputSampleBufferDelegate {
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // ★★★ FIX: Only handle audio here - video comes from MetalPreviewView ★★★
+        guard isRecording, output == audioDataOutput else { return }
+        videoRecorder?.processAudioSample(sampleBuffer)
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // Frame was dropped - could log for debugging
+        // This is normal under heavy load
+    }
+}
+
+// MARK: - VideoRecorderDelegate
+
+extension CameraManager: VideoRecorderDelegate {
+
+    func videoRecorderDidStartRecording(_ recorder: VideoRecorder) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isRecording = true
+            self?.recordingDuration = 0
+            print("🎬 CameraManager: Video recording started")
+        }
+    }
+
+    func videoRecorderDidStopRecording(_ recorder: VideoRecorder, outputURL: URL) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isRecording = false
+            print("🎬 CameraManager: Video recording stopped")
+
+            // Save to photo library
+            recorder.saveToPhotoLibrary(url: outputURL) { success, error in
+                if success {
+                    print("✅ CameraManager: Video saved to library")
+                } else if let error = error {
+                    print("❌ CameraManager: Failed to save video - \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func videoRecorderDidFail(_ recorder: VideoRecorder, error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isRecording = false
+            self?.error = error
+            print("❌ CameraManager: Video recording failed - \(error.localizedDescription)")
+        }
+    }
+
+    func videoRecorderDurationUpdated(_ recorder: VideoRecorder, duration: TimeInterval) {
+        DispatchQueue.main.async { [weak self] in
+            self?.recordingDuration = duration
         }
     }
 }
@@ -423,56 +621,62 @@ class CameraManager: NSObject, ObservableObject {
 // MARK: - Photo Capture Processor (Full Quality Pipeline)
 
 class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
-    
+
     private let preset: FilterPreset
     private let filterRenderer: FilterRenderer
-    private let completion: (UIImage?) -> Void
-    
-    init(preset: FilterPreset, filterRenderer: FilterRenderer, completion: @escaping (UIImage?) -> Void) {
+    private let completion: (UIImage?, UIImage?) -> Void // (original, filtered)
+
+    init(preset: FilterPreset, filterRenderer: FilterRenderer, completion: @escaping (UIImage?, UIImage?) -> Void) {
         self.preset = preset
         self.filterRenderer = filterRenderer
         self.completion = completion
         super.init()
     }
-    
+
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
             print("❌ PhotoCaptureProcessor: Capture error - \(error)")
-            completion(nil)
+            completion(nil, nil)
             return
         }
-        
+
         guard let imageData = photo.fileDataRepresentation(),
               let originalImage = UIImage(data: imageData) else {
             print("❌ PhotoCaptureProcessor: Failed to get image data")
-            completion(nil)
+            completion(nil, nil)
             return
         }
-        
+
         print("📸 PhotoCaptureProcessor: Processing \(Int(originalImage.size.width))×\(Int(originalImage.size.height)) image")
-        
+
         // Apply FULL quality filter pipeline (13 passes)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            
+
             let startTime = CFAbsoluteTimeGetCurrent()
-            
+
             if let filteredImage = self.applyFullQualityFilters(to: originalImage) {
                 let elapsed = CFAbsoluteTimeGetCurrent() - startTime
                 print("✅ PhotoCaptureProcessor: Full pipeline completed in \(String(format: "%.2f", elapsed))s")
-                self.completion(filteredImage)
+                self.completion(originalImage, filteredImage)
             } else {
                 print("⚠️ PhotoCaptureProcessor: Filter failed, returning original")
-                self.completion(originalImage)
+                self.completion(originalImage, originalImage)
             }
         }
     }
     
     // MARK: - Apply Full Quality Filters (13 passes)
-    
+
     private func applyFullQualityFilters(to image: UIImage) -> UIImage? {
         guard let cgImage = image.cgImage else { return nil }
-        
+
+        // ★★★ FIX: Check if RenderEngine is available before using it ★★★
+        guard RenderEngine.isAvailable else {
+            print("⚠️ PhotoCaptureProcessor: RenderEngine not available, returning original image")
+            return image
+        }
+
         let device = RenderEngine.shared.device
         let commandQueue = RenderEngine.shared.commandQueue
         

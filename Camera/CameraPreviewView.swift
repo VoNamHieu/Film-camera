@@ -167,6 +167,8 @@ final class CameraPreviewUIView: UIView {
             if let windowScene = window?.windowScene {
                 let orientation = windowScene.effectiveGeometry.interfaceOrientation
                 switch orientation {
+                case .unknown:
+                    rotationAngle = 90
                 case .portrait:
                     rotationAngle = 90
                 case .portraitUpsideDown:
@@ -199,8 +201,10 @@ final class CameraPreviewUIView: UIView {
         guard let windowScene = window?.windowScene else { return 90 }
         
         let interfaceOrientation = windowScene.interfaceOrientation
-        
+
         switch interfaceOrientation {
+        case .unknown:
+            return 90
         case .portrait:
             return 90
         case .portraitUpsideDown:
