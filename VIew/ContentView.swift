@@ -84,13 +84,19 @@ struct ContentView: View {
     }
     
     // MARK: - Camera Content View
-    
+
     private var cameraContentView: some View {
         ZStack {
-            // Camera Preview with Real-time Filtering
-            MetalPreviewView(cameraManager: cameraManager, selectedPreset: $selectedPreset)
-                .ignoresSafeArea()
-            
+            // ★★★ FIX: Check Metal availability and fallback to basic preview ★★★
+            if RenderEngine.isMetalAvailable {
+                MetalPreviewView(cameraManager: cameraManager, selectedPreset: $selectedPreset)
+                    .ignoresSafeArea()
+            } else {
+                // Fallback for devices without Metal support
+                CameraPreviewView(cameraManager: cameraManager)
+                    .ignoresSafeArea()
+            }
+
             // Loading overlay when session not ready
             if !cameraManager.isSessionRunning {
                 Color.black
