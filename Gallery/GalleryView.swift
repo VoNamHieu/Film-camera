@@ -9,7 +9,7 @@ import SwiftUI
 
 struct GalleryView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var galleryManager = GalleryManager.shared
+    @ObservedObject private var galleryManager = GalleryManager.shared
 
     @State private var selectedPhoto: CapturedPhoto?
     @State private var isSelectionMode = false
@@ -253,7 +253,7 @@ struct PhotoThumbnailCell: View {
     let isSelectionMode: Bool
 
     @State private var thumbnail: UIImage?
-    @StateObject private var galleryManager = GalleryManager.shared
+    private let galleryManager = GalleryManager.shared
 
     var body: some View {
         GeometryReader { geometry in

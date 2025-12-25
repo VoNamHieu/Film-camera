@@ -9,7 +9,7 @@ import SwiftUI
 
 struct PhotoDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var galleryManager = GalleryManager.shared
+    @ObservedObject private var galleryManager = GalleryManager.shared
 
     let photo: CapturedPhoto
 
@@ -265,18 +265,6 @@ struct PhotoDetailView: View {
         _ = await galleryManager.delete(id: photo.id)
         dismiss()
     }
-}
-
-// MARK: - Share Sheet
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Preview
