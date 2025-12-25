@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key></key>
-	<string></string>
+	<key>NSCameraUsageDescription</key>
+	<string>Film Camera needs access to your camera to capture photos and videos with beautiful film emulation filters.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Film Camera needs access to your microphone to record audio with videos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Film Camera needs access to your photo library to import photos for editing.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Film Camera needs permission to save photos and videos to your photo library.</string>
 </dict>
 </plist>
