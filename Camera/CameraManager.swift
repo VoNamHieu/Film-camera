@@ -196,13 +196,33 @@ class CameraManager: NSObject, ObservableObject {
             videoDeviceInput = videoInput
         }
 
-        // Add audio input for video recording
-        if let audioDevice = AVCaptureDevice.default(for: .audio),
-           let audioInput = try? AVCaptureDeviceInput(device: audioDevice) {
-            if session.canAddInput(audioInput) {
-                session.addInput(audioInput)
-                audioDeviceInput = audioInput
+        // Add audio input for video recording (only if microphone permission granted)
+        // Check microphone permission first to avoid crash
+        let audioStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        if audioStatus == .authorized {
+            if let audioDevice = AVCaptureDevice.default(for: .audio),
+               let audioInput = try? AVCaptureDeviceInput(device: audioDevice) {
+                if session.canAddInput(audioInput) {
+                    session.addInput(audioInput)
+                    audioDeviceInput = audioInput
+                    print("✅ CameraManager: Audio input added")
+                }
             }
+        } else if audioStatus == .notDetermined {
+            // Request microphone permission in background
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                if granted {
+                    print("✅ CameraManager: Microphone permission granted")
+                    // Audio will be added on next session configuration
+                    self?.sessionQueue.async {
+                        self?.addAudioInputIfNeeded()
+                    }
+                } else {
+                    print("⚠️ CameraManager: Microphone permission denied - video will record without audio")
+                }
+            }
+        } else {
+            print("⚠️ CameraManager: Microphone permission not authorized - video will record without audio")
         }
 
         // Add photo output
@@ -227,13 +247,16 @@ class CameraManager: NSObject, ObservableObject {
             self.videoDataOutput = videoDataOutput
         }
 
-        // Add audio data output for recording
-        let audioDataOutput = AVCaptureAudioDataOutput()
-        audioDataOutput.setSampleBufferDelegate(self, queue: audioDataQueue)
+        // Add audio data output for recording (only if audio input is available)
+        if audioDeviceInput != nil {
+            let audioDataOutput = AVCaptureAudioDataOutput()
+            audioDataOutput.setSampleBufferDelegate(self, queue: audioDataQueue)
 
-        if session.canAddOutput(audioDataOutput) {
-            session.addOutput(audioDataOutput)
-            self.audioDataOutput = audioDataOutput
+            if session.canAddOutput(audioDataOutput) {
+                session.addOutput(audioDataOutput)
+                self.audioDataOutput = audioDataOutput
+                print("✅ CameraManager: Audio data output added")
+            }
         }
 
         session.commitConfiguration()
@@ -251,7 +274,36 @@ class CameraManager: NSObject, ObservableObject {
 
         print("✅ CameraManager: Session configured with video/audio outputs and running")
     }
-    
+
+    /// Add audio input after permission is granted (called asynchronously)
+    private func addAudioInputIfNeeded() {
+        guard audioDeviceInput == nil else { return }
+
+        session.beginConfiguration()
+
+        if let audioDevice = AVCaptureDevice.default(for: .audio),
+           let audioInput = try? AVCaptureDeviceInput(device: audioDevice) {
+            if session.canAddInput(audioInput) {
+                session.addInput(audioInput)
+                audioDeviceInput = audioInput
+                print("✅ CameraManager: Audio input added (deferred)")
+
+                // Also add audio data output
+                if audioDataOutput == nil {
+                    let audioOutput = AVCaptureAudioDataOutput()
+                    audioOutput.setSampleBufferDelegate(self, queue: audioDataQueue)
+                    if session.canAddOutput(audioOutput) {
+                        session.addOutput(audioOutput)
+                        self.audioDataOutput = audioOutput
+                        print("✅ CameraManager: Audio data output added (deferred)")
+                    }
+                }
+            }
+        }
+
+        session.commitConfiguration()
+    }
+
     // MARK: - Camera Controls
     
     func switchCamera() {
