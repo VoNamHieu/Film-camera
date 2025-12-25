@@ -9,6 +9,11 @@ import MetalKit
 /// Singleton Metal rendering engine
 class RenderEngine {
     static let shared = RenderEngine()
+
+    // ★★★ FIX: Check if Metal is available before accessing shared instance ★★★
+    static var isMetalAvailable: Bool {
+        return MTLCreateSystemDefaultDevice() != nil
+    }
     
     let device: MTLDevice
     let commandQueue: MTLCommandQueue

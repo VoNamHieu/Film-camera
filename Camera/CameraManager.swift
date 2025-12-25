@@ -214,17 +214,21 @@ class CameraManager: NSObject, ObservableObject {
             self.photoOutput = photoOutput
         }
 
-        // Add video data output for recording
+        // ★★★ FIX: Create video data output but DON'T set delegate ★★★
+        // MetalPreviewView will take over and forward frames when recording
         let videoDataOutput = AVCaptureVideoDataOutput()
         videoDataOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
         ]
         videoDataOutput.alwaysDiscardsLateVideoFrames = true
-        videoDataOutput.setSampleBufferDelegate(self, queue: videoDataQueue)
+        // NOTE: Delegate will be set by MetalPreviewView
 
         if session.canAddOutput(videoDataOutput) {
             session.addOutput(videoDataOutput)
             self.videoDataOutput = videoDataOutput
+            print("✅ CameraManager: Video data output added")
+        } else {
+            print("⚠️ CameraManager: Could not add video data output")
         }
 
         // Add audio data output for recording
@@ -234,13 +238,21 @@ class CameraManager: NSObject, ObservableObject {
         if session.canAddOutput(audioDataOutput) {
             session.addOutput(audioDataOutput)
             self.audioDataOutput = audioDataOutput
+            print("✅ CameraManager: Audio data output added")
+        } else {
+            print("⚠️ CameraManager: Could not add audio data output")
         }
 
         session.commitConfiguration()
 
-        // Initialize video recorder
-        videoRecorder = VideoRecorder()
-        videoRecorder?.delegate = self
+        // ★★★ FIX: Validate video recorder initialization ★★★
+        if let recorder = VideoRecorder() {
+            videoRecorder = recorder
+            videoRecorder?.delegate = self
+            print("✅ CameraManager: VideoRecorder initialized")
+        } else {
+            print("❌ CameraManager: Failed to initialize VideoRecorder - video recording will be unavailable")
+        }
 
         // Start session
         session.startRunning()
@@ -249,7 +261,7 @@ class CameraManager: NSObject, ObservableObject {
             self?.isSessionRunning = true
         }
 
-        print("✅ CameraManager: Session configured with video/audio outputs and running")
+        print("✅ CameraManager: Session configured and running")
     }
     
     // MARK: - Camera Controls
@@ -512,20 +524,22 @@ class CameraManager: NSObject, ObservableObject {
     var lastRecordedVideoURL: URL? {
         return nil // Will be provided via delegate
     }
+
+    // ★★★ FIX: Public method to receive video frames from MetalPreviewView ★★★
+    func handleVideoFrame(_ sampleBuffer: CMSampleBuffer) {
+        guard isRecording else { return }
+        videoRecorder?.processVideoFrame(sampleBuffer)
+    }
 }
 
-// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate & AVCaptureAudioDataOutputSampleBufferDelegate
+// MARK: - AVCaptureAudioDataOutputSampleBufferDelegate
 
-extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
+extension CameraManager: AVCaptureAudioDataOutputSampleBufferDelegate {
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard isRecording else { return }
-
-        if output == videoDataOutput {
-            videoRecorder?.processVideoFrame(sampleBuffer)
-        } else if output == audioDataOutput {
-            videoRecorder?.processAudioSample(sampleBuffer)
-        }
+        // ★★★ FIX: Only handle audio here - video comes from MetalPreviewView ★★★
+        guard isRecording, output == audioDataOutput else { return }
+        videoRecorder?.processAudioSample(sampleBuffer)
     }
 
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
