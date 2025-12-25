@@ -196,13 +196,25 @@ class CameraManager: NSObject, ObservableObject {
             videoDeviceInput = videoInput
         }
 
-        // Add audio input for video recording
-        if let audioDevice = AVCaptureDevice.default(for: .audio),
-           let audioInput = try? AVCaptureDeviceInput(device: audioDevice) {
-            if session.canAddInput(audioInput) {
-                session.addInput(audioInput)
-                audioDeviceInput = audioInput
+        // ★★★ FIX: Check audio permission before adding audio input ★★★
+        // TCC will crash app if we access microphone without permission!
+        let audioStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        if audioStatus == .authorized {
+            if let audioDevice = AVCaptureDevice.default(for: .audio),
+               let audioInput = try? AVCaptureDeviceInput(device: audioDevice) {
+                if session.canAddInput(audioInput) {
+                    session.addInput(audioInput)
+                    audioDeviceInput = audioInput
+                    print("✅ CameraManager: Audio input added")
+                }
             }
+        } else if audioStatus == .notDetermined {
+            // Request audio permission asynchronously - will be available next session
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                print("🎤 CameraManager: Audio permission \(granted ? "granted" : "denied")")
+            }
+        } else {
+            print("⚠️ CameraManager: Audio permission denied/restricted - video will have no audio")
         }
 
         // Add photo output
