@@ -11,25 +11,8 @@ import SwiftUI
 
 struct EffectControlsView: View {
     @ObservedObject var effectManager: EffectStateManager
-    @State private var selectedCategory: EffectCategory = .filmEffects
+    @State private var selectedGroup: EffectGroup = .film
     @State private var expandedEffect: EffectType?
-
-    enum EffectCategory: String, CaseIterable {
-        case colorAdjustments = "Color"
-        case filmEffects = "Film"
-        case specialEffects = "Special"
-
-        var effects: [EffectType] {
-            switch self {
-            case .colorAdjustments:
-                return [.exposure, .contrast, .saturation, .vibrance, .temperature, .tint, .highlights, .shadows, .fade, .clarity]
-            case .filmEffects:
-                return [.grain, .bloom, .vignette, .halation]
-            case .specialEffects:
-                return [.instantFrame, .skinToneProtection, .lensDistortion, .toneMapping]
-            }
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,7 +25,7 @@ struct EffectControlsView: View {
             // Effect Controls
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach(selectedCategory.effects, id: \.self) { effect in
+                    ForEach(selectedGroup.effects, id: \.self) { effect in
                         EffectControlRow(
                             effect: effect,
                             value: effectManager.effectiveValue(for: effect),
@@ -102,23 +85,25 @@ struct EffectControlsView: View {
     // MARK: - Category Selector
 
     private var categorySelector: some View {
-        HStack(spacing: 0) {
-            ForEach(EffectCategory.allCases, id: \.self) { category in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedCategory = category
-                        expandedEffect = nil
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(EffectGroup.allCases, id: \.self) { group in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedGroup = group
+                            expandedEffect = nil
+                        }
+                    } label: {
+                        Text(group.rawValue)
+                            .font(.subheadline.weight(selectedGroup == group ? .semibold : .regular))
+                            .foregroundColor(selectedGroup == group ? .white : .gray)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                selectedGroup == group ?
+                                Color.white.opacity(0.15) : Color.clear
+                            )
                     }
-                } label: {
-                    Text(category.rawValue)
-                        .font(.subheadline.weight(selectedCategory == category ? .semibold : .regular))
-                        .foregroundColor(selectedCategory == category ? .white : .gray)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            selectedCategory == category ?
-                            Color.white.opacity(0.15) : Color.clear
-                        )
                 }
             }
         }
@@ -279,7 +264,7 @@ struct EffectControlRow: View {
 /// Compact horizontal effect bar for quick access
 struct CompactEffectBar: View {
     @ObservedObject var effectManager: EffectStateManager
-    let effects: [EffectType] = [.grain, .bloom, .vignette, .halation]
+    let effects: [EffectType] = [.grain, .bloom, .vignette, .halation, .flash]
 
     var body: some View {
         HStack(spacing: 16) {
@@ -360,7 +345,11 @@ struct CompactEffectButton: View {
         case .bloom: return "Bloom"
         case .vignette: return "Vig"
         case .halation: return "Halo"
-        default: return effect.displayName
+        case .flash: return "Flash"
+        case .lightLeak: return "Leak"
+        case .ccdBloom: return "CCD"
+        case .dateStamp: return "Date"
+        default: return String(effect.displayName.prefix(5))
         }
     }
 }

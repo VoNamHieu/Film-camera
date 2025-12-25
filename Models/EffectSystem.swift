@@ -38,11 +38,27 @@ enum EffectValue: Codable, Equatable {
 
     // MARK: - Convenience Accessors
 
-    var isEnabled: Bool {
+    /// Whether this effect is active/enabled
+    var isActive: Bool {
         switch self {
         case .toggle(let enabled): return enabled
         case .slider(let value, _, _): return value > 0
-        case .compound(let values): return values["enabled"] == 1.0 || values["intensity"] ?? 0 > 0
+        case .compound(let values): return values["enabled"] == 1.0 || (values["intensity"] ?? 0) > 0
+        }
+    }
+
+    /// Alias for isActive (backward compatibility)
+    var isEnabled: Bool { isActive }
+
+    /// Intensity value (0.0 - 1.0)
+    var intensity: Float {
+        switch self {
+        case .toggle(let enabled): return enabled ? 1.0 : 0.0
+        case .slider(let value, let min, let max):
+            guard max > min else { return 0 }
+            return (value - min) / (max - min)
+        case .compound(let values):
+            return values["intensity"] ?? values["value"] ?? 0
         }
     }
 
@@ -54,16 +70,7 @@ enum EffectValue: Codable, Equatable {
         }
     }
 
-    var normalizedValue: Float {
-        switch self {
-        case .toggle(let enabled): return enabled ? 1.0 : 0.0
-        case .slider(let value, let min, let max):
-            guard max > min else { return 0 }
-            return (value - min) / (max - min)
-        case .compound(let values):
-            return values["intensity"] ?? values["value"] ?? 0
-        }
-    }
+    var normalizedValue: Float { intensity }
 
     // MARK: - Codable
 
@@ -141,6 +148,12 @@ enum EffectType: String, CaseIterable, Codable {
     case halation
     case lensDistortion
 
+    // Disposable/Flash Effects
+    case flash
+    case lightLeak
+    case dateStamp
+    case ccdBloom
+
     // Special Effects
     case instantFrame
     case skinToneProtection
@@ -170,6 +183,10 @@ enum EffectType: String, CaseIterable, Codable {
         case .vignette: return "Vignette"
         case .halation: return "Halation"
         case .lensDistortion: return "Lens Distortion"
+        case .flash: return "Flash"
+        case .lightLeak: return "Light Leak"
+        case .dateStamp: return "Date Stamp"
+        case .ccdBloom: return "CCD Bloom"
         case .instantFrame: return "Instant Frame"
         case .skinToneProtection: return "Skin Tone Protection"
         case .toneMapping: return "Tone Mapping"
@@ -198,6 +215,10 @@ enum EffectType: String, CaseIterable, Codable {
         case .vignette: return "viewfinder"
         case .halation: return "light.beacon.max"
         case .lensDistortion: return "camera.aperture"
+        case .flash: return "bolt.fill"
+        case .lightLeak: return "sun.haze.fill"
+        case .dateStamp: return "calendar.badge.clock"
+        case .ccdBloom: return "sparkle"
         case .instantFrame: return "photo.on.rectangle"
         case .skinToneProtection: return "face.smiling"
         case .toneMapping: return "slider.horizontal.3"
@@ -209,17 +230,17 @@ enum EffectType: String, CaseIterable, Codable {
         // Low impact - simple color operations
         case .exposure, .contrast, .saturation, .vibrance,
              .temperature, .tint, .highlights, .shadows,
-             .whites, .blacks, .fade:
+             .whites, .blacks, .fade, .dateStamp:
             return .low
 
         // Medium impact - moderate GPU usage
         case .clarity, .vignette, .splitTone, .lensDistortion,
-             .skinToneProtection, .toneMapping:
+             .skinToneProtection, .toneMapping, .flash, .lightLeak:
             return .medium
 
         // High impact - heavy GPU operations
         case .grain, .bloom, .halation, .rgbCurves,
-             .selectiveColor, .instantFrame:
+             .selectiveColor, .instantFrame, .ccdBloom:
             return .high
         }
     }
@@ -288,17 +309,79 @@ enum EffectType: String, CaseIterable, Codable {
 
         case .instantFrame:
             return .toggle(enabled: false)
+
+        // New disposable camera effects
+        case .flash:
+            return .compound(values: [
+                "enabled": 0.0,
+                "intensity": 0.6,
+                "falloff": 0.6,
+                "warmth": 0.1,
+                "shadowLift": 0.2
+            ])
+
+        case .lightLeak:
+            return .compound(values: [
+                "enabled": 0.0,
+                "intensity": 0.3,
+                "positionX": 0.8,
+                "positionY": 0.2,
+                "size": 0.4
+            ])
+
+        case .dateStamp:
+            return .toggle(enabled: false)
+
+        case .ccdBloom:
+            return .compound(values: [
+                "enabled": 0.0,
+                "intensity": 0.2,
+                "threshold": 0.7,
+                "spread": 0.5
+            ])
         }
     }
 
     /// Whether this effect supports intensity adjustment
     var hasIntensity: Bool {
         switch self {
-        case .grain, .bloom, .vignette, .halation, .instantFrame:
+        case .grain, .bloom, .vignette, .halation, .flash, .lightLeak, .ccdBloom:
             return true
         default:
             return false
         }
+    }
+
+    /// Group this effect belongs to (for UI organization)
+    var group: EffectGroup {
+        switch self {
+        case .exposure, .contrast, .saturation, .vibrance,
+             .temperature, .tint, .highlights, .shadows,
+             .whites, .blacks, .fade, .clarity:
+            return .color
+        case .splitTone, .rgbCurves, .selectiveColor:
+            return .tone
+        case .grain, .bloom, .vignette, .halation, .lensDistortion:
+            return .film
+        case .flash, .lightLeak, .dateStamp, .ccdBloom:
+            return .disposable
+        case .instantFrame, .skinToneProtection, .toneMapping:
+            return .special
+        }
+    }
+}
+
+// MARK: - Effect Group
+
+enum EffectGroup: String, CaseIterable {
+    case color = "Color"
+    case tone = "Tone"
+    case film = "Film"
+    case disposable = "Disposable"
+    case special = "Special"
+
+    var effects: [EffectType] {
+        EffectType.allCases.filter { $0.group == self }
     }
 }
 
@@ -743,6 +826,94 @@ final class EffectStateManager: ObservableObject {
         }
 
         return preset
+    }
+
+    // MARK: - Convenience Getters
+
+    /// Number of active effects
+    var activeCount: Int {
+        var count = 0
+        for effectType in EffectType.allCases {
+            if isEffectEnabled(effectType) {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    /// Quick accessors for common effects
+    var grainIntensity: Float { effectIntensity(for: .grain) }
+    var grainEnabled: Bool { isEffectEnabled(.grain) }
+
+    var bloomIntensity: Float { effectIntensity(for: .bloom) }
+    var bloomEnabled: Bool { isEffectEnabled(.bloom) }
+
+    var vignetteIntensity: Float { effectIntensity(for: .vignette) }
+    var vignetteEnabled: Bool { isEffectEnabled(.vignette) }
+
+    var halationIntensity: Float { effectIntensity(for: .halation) }
+    var halationEnabled: Bool { isEffectEnabled(.halation) }
+
+    var flashIntensity: Float { effectIntensity(for: .flash) }
+    var flashEnabled: Bool { isEffectEnabled(.flash) }
+
+    var lightLeakIntensity: Float { effectIntensity(for: .lightLeak) }
+    var lightLeakEnabled: Bool { isEffectEnabled(.lightLeak) }
+
+    var dateStampEnabled: Bool { isEffectEnabled(.dateStamp) }
+
+    var ccdBloomIntensity: Float { effectIntensity(for: .ccdBloom) }
+    var ccdBloomEnabled: Bool { isEffectEnabled(.ccdBloom) }
+
+    var instantFrameEnabled: Bool { isEffectEnabled(.instantFrame) }
+
+    // MARK: - Persistence
+
+    private static let userDefaultsKey = "EffectStateManager.overrides"
+
+    /// Save current overrides to UserDefaults
+    func saveOverrides() {
+        guard let presetId = currentPreset?.id else { return }
+        let key = "\(Self.userDefaultsKey).\(presetId)"
+
+        // Convert to storable format
+        var storable: [String: Data] = [:]
+        for (effectType, value) in effectOverrides {
+            if let encoded = try? JSONEncoder().encode(value) {
+                storable[effectType.rawValue] = encoded
+            }
+        }
+
+        UserDefaults.standard.set(try? JSONEncoder().encode(storable), forKey: key)
+        print("💾 EffectStateManager: Saved \(effectOverrides.count) overrides for preset '\(currentPreset?.label ?? "unknown")'")
+    }
+
+    /// Load saved overrides for current preset
+    func loadSavedOverrides() {
+        guard let presetId = currentPreset?.id else { return }
+        let key = "\(Self.userDefaultsKey).\(presetId)"
+
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let storable = try? JSONDecoder().decode([String: Data].self, from: data) else {
+            return
+        }
+
+        for (rawValue, valueData) in storable {
+            if let effectType = EffectType(rawValue: rawValue),
+               let value = try? JSONDecoder().decode(EffectValue.self, from: valueData) {
+                effectOverrides[effectType] = value
+            }
+        }
+
+        updatePerformanceLevel()
+        print("📂 EffectStateManager: Loaded \(effectOverrides.count) saved overrides for preset '\(currentPreset?.label ?? "unknown")'")
+    }
+
+    /// Clear saved overrides for current preset
+    func clearSavedOverrides() {
+        guard let presetId = currentPreset?.id else { return }
+        let key = "\(Self.userDefaultsKey).\(presetId)"
+        UserDefaults.standard.removeObject(forKey: key)
     }
 
     // MARK: - Private Methods
