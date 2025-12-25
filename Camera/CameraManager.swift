@@ -487,12 +487,10 @@ class CameraManager: NSObject, ObservableObject {
 
         recordingPreset = preset
 
-        // Get video dimensions from video data output
+        // Get video dimensions from active format
         var videoSize = CGSize(width: 1920, height: 1080)
-        if let connection = videoDataOutput?.connection(with: .video) {
-            let dimensions = CMVideoFormatDescriptionGetDimensions(
-                videoDeviceInput?.device.activeFormat.formatDescription ?? CMVideoFormatDescription()
-            )
+        if let formatDescription = videoDeviceInput?.device.activeFormat.formatDescription {
+            let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
             videoSize = CGSize(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
         }
 
