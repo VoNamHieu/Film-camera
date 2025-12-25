@@ -1,6 +1,6 @@
 // ContentView.swift
 // Film Camera - Production Ready
-// ★★★ UPDATED: Added Photo Library integration ★★★
+// ★★★ UPDATED: Added Gallery integration ★★★
 
 import SwiftUI
 import AVFoundation
@@ -9,16 +9,22 @@ import PhotosUI
 
 struct ContentView: View {
     @StateObject private var cameraManager = CameraManager()
+    @StateObject private var galleryManager = GalleryManager.shared
     @State private var selectedPreset: FilterPreset = FilmPresets.kodakPortra400
     @State private var selectedCategory: FilterCategory = .professional
     @State private var showPresetPicker = false
     @State private var showSavedAlert = false
     @State private var isCapturing = false
-    
-    // ★★★ NEW: Photo Library states ★★★
+
+    // Gallery states
+    @State private var showGallery = false
     @State private var showPhotoEditor = false
     @State private var lastCapturedImage: UIImage?
     @State private var showLastPhoto = false
+
+    // Video recording states
+    @State private var isVideoMode = false
+    @State private var showVideoSavedAlert = false
     
     var body: some View {
         ZStack {
@@ -44,17 +50,32 @@ struct ContentView: View {
         }
         .onAppear {
             cameraManager.checkPermissionStatus()
+            // Load last photo thumbnail from gallery
+            if let lastPhoto = galleryManager.mostRecentPhoto {
+                Task {
+                    lastCapturedImage = await galleryManager.loadThumbnailAsync(id: lastPhoto.id)
+                }
+            }
         }
         .alert("Photo Saved", isPresented: $showSavedAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Your photo has been saved to the camera roll.")
+            Text("Your photo has been saved to Gallery.")
         }
-        // ★★★ NEW: Photo Editor Sheet ★★★
+        .alert("Video Saved", isPresented: $showVideoSavedAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your video has been saved to Photos.")
+        }
+        // Gallery View
+        .fullScreenCover(isPresented: $showGallery) {
+            GalleryView()
+        }
+        // Photo Editor (import from Photo Library)
         .fullScreenCover(isPresented: $showPhotoEditor) {
             PhotoEditorView()
         }
-        // ★★★ NEW: Last Photo Preview Sheet ★★★
+        // Last Photo Preview Sheet
         .sheet(isPresented: $showLastPhoto) {
             if let image = lastCapturedImage {
                 LastPhotoPreviewView(image: image, onDismiss: { showLastPhoto = false })
@@ -210,15 +231,23 @@ struct ContentView: View {
     }
     
     // MARK: - Bottom Controls
-    
+
     private var bottomControls: some View {
         VStack(spacing: 16) {
+            // Recording indicator
+            if cameraManager.isRecording {
+                recordingIndicator
+            }
+
             // Category Scroll
             categoryScrollView
-            
+
             // Preset Scroll
             presetScrollView
-            
+
+            // Photo/Video mode toggle
+            modeToggle
+
             // Capture Controls
             captureControlsBar
                 .padding(.bottom, 20)
@@ -232,6 +261,68 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
         )
+    }
+
+    // MARK: - Recording Indicator
+
+    private var recordingIndicator: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 10, height: 10)
+                .opacity(cameraManager.isRecording ? 1 : 0)
+                .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: cameraManager.isRecording)
+
+            Text(formatDuration(cameraManager.recordingDuration))
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.3))
+        .cornerRadius(20)
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    // MARK: - Mode Toggle
+
+    private var modeToggle: some View {
+        HStack(spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isVideoMode = false
+                }
+            } label: {
+                Text("Photo")
+                    .font(.system(size: 14, weight: isVideoMode ? .regular : .semibold))
+                    .foregroundColor(isVideoMode ? .gray : .white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .background(isVideoMode ? Color.clear : Color.white.opacity(0.2))
+                    .cornerRadius(16)
+            }
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isVideoMode = true
+                }
+            } label: {
+                Text("Video")
+                    .font(.system(size: 14, weight: isVideoMode ? .semibold : .regular))
+                    .foregroundColor(isVideoMode ? .white : .gray)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .background(isVideoMode ? Color.white.opacity(0.2) : Color.clear)
+                    .cornerRadius(16)
+            }
+        }
+        .background(Color.black.opacity(0.3))
+        .cornerRadius(20)
     }
     
     // MARK: - Category Scroll
@@ -282,13 +373,13 @@ struct ContentView: View {
     
     private var captureControlsBar: some View {
         HStack(spacing: 50) {
-            // ★★★ UPDATED: Gallery button now opens Photo Editor ★★★
-            Button(action: { showPhotoEditor = true }) {
+            // Gallery button - opens local gallery
+            Button(action: { showGallery = true }) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.white.opacity(0.15))
                         .frame(width: 48, height: 48)
-                    
+
                     // Show last captured photo thumbnail if available
                     if let lastImage = lastCapturedImage {
                         Image(uiImage: lastImage)
@@ -301,20 +392,50 @@ struct ContentView: View {
                             .font(.system(size: 20))
                             .foregroundColor(.white)
                     }
+
+                    // Photo count badge
+                    if galleryManager.count > 0 {
+                        Text("\(galleryManager.count)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.blue)
+                            .clipShape(Capsule())
+                            .offset(x: 18, y: -18)
+                    }
                 }
             }
             
-            // Capture Button
-            Button(action: { capturePhoto() }) {
+            // Capture/Record Button
+            Button(action: {
+                if isVideoMode {
+                    toggleVideoRecording()
+                } else {
+                    capturePhoto()
+                }
+            }) {
                 ZStack {
                     Circle()
-                        .stroke(.white, lineWidth: 4)
+                        .stroke(isVideoMode ? .red : .white, lineWidth: 4)
                         .frame(width: 72, height: 72)
-                    
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 60, height: 60)
-                        .scaleEffect(isCapturing ? 0.9 : 1.0)
+
+                    if isVideoMode {
+                        // Video mode: red circle or square when recording
+                        RoundedRectangle(cornerRadius: cameraManager.isRecording ? 8 : 30)
+                            .fill(.red)
+                            .frame(
+                                width: cameraManager.isRecording ? 28 : 60,
+                                height: cameraManager.isRecording ? 28 : 60
+                            )
+                            .animation(.easeInOut(duration: 0.2), value: cameraManager.isRecording)
+                    } else {
+                        // Photo mode: white circle
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 60, height: 60)
+                            .scaleEffect(isCapturing ? 0.9 : 1.0)
+                    }
                 }
             }
             .disabled(isCapturing || !cameraManager.isSessionRunning || cameraManager.isInterrupted)
@@ -334,46 +455,62 @@ struct ContentView: View {
     }
     
     // MARK: - Actions
-    
+
     private func capturePhoto() {
         guard !isCapturing else { return }
-        
+
         // Haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
-        
+
         withAnimation(.easeInOut(duration: 0.1)) {
             isCapturing = true
         }
-        
-        cameraManager.capturePhoto(preset: selectedPreset) { image in
+
+        // Capture with both original and filtered images
+        cameraManager.capturePhotoWithOriginal(preset: selectedPreset) { original, filtered in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isCapturing = false
             }
 
-            if let image = image {
-                // ★★★ NEW: Store last captured image for thumbnail ★★★
-                lastCapturedImage = image
-                saveToPhotoLibrary(image)
+            guard let originalImage = original, let filteredImage = filtered else {
+                return
             }
-        }
-    }
-    
-    private func saveToPhotoLibrary(_ image: UIImage) {
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            guard status == .authorized || status == .limited else { return }
-            
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: image)
-            }) { success, error in
-                DispatchQueue.main.async {
-                    if success {
+
+            // Update thumbnail preview
+            lastCapturedImage = filteredImage
+
+            // Save to gallery
+            Task {
+                if let _ = await galleryManager.save(
+                    originalImage: originalImage,
+                    filteredImage: filteredImage,
+                    preset: selectedPreset
+                ) {
+                    await MainActor.run {
                         showSavedAlert = true
                         let notificationFeedback = UINotificationFeedbackGenerator()
                         notificationFeedback.notificationOccurred(.success)
                     }
                 }
             }
+        }
+    }
+
+    private func toggleVideoRecording() {
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        if cameraManager.isRecording {
+            // Stop recording
+            cameraManager.stopVideoRecording()
+            showVideoSavedAlert = true
+            let notificationFeedback = UINotificationFeedbackGenerator()
+            notificationFeedback.notificationOccurred(.success)
+        } else {
+            // Start recording
+            cameraManager.startVideoRecording(preset: selectedPreset)
         }
     }
 }
