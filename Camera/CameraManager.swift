@@ -119,21 +119,21 @@ class CameraManager: NSObject, ObservableObject {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(sessionWasInterrupted),
-            name: .AVCaptureSessionWasInterrupted,
+            name: AVCaptureSession.wasInterruptedNotification,
             object: session
         )
-        
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(sessionInterruptionEnded),
-            name: .AVCaptureSessionInterruptionEnded,
+            name: AVCaptureSession.interruptionEndedNotification,
             object: session
         )
-        
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(sessionRuntimeError),
-            name: .AVCaptureSessionRuntimeError,
+            name: AVCaptureSession.runtimeErrorNotification,
             object: session
         )
     }
