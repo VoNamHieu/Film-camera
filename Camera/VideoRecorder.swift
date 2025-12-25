@@ -353,13 +353,24 @@ final class VideoRecorder {
     // MARK: - Filter Application
 
     private func applyFilter(to pixelBuffer: CVPixelBuffer, preset: FilterPreset) -> CVPixelBuffer? {
-        guard let pool = pixelBufferPool,
-              let textureCache = metalTextureCache else {
+        guard let textureCache = metalTextureCache else {
             return nil
         }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
+
+        // ★★★ FIX: Update pool if frame dimensions changed (e.g., portrait vs landscape) ★★★
+        if width != poolWidth || height != poolHeight {
+            print("⚠️ VideoRecorder: Frame size changed from \(poolWidth)×\(poolHeight) to \(width)×\(height), updating pool")
+            videoSettings.width = width
+            videoSettings.height = height
+            setupPixelBufferPool()
+        }
+
+        guard let pool = pixelBufferPool else {
+            return nil
+        }
 
         // Create input texture from source pixel buffer
         var inputTextureRef: CVMetalTexture?
@@ -390,7 +401,7 @@ final class VideoRecorder {
             return nil
         }
 
-        // Create output texture from output pixel buffer
+        // ★★★ FIX: Use actual frame dimensions for output texture ★★★
         var outputTextureRef: CVMetalTexture?
         let outputStatus = CVMetalTextureCacheCreateTextureFromImage(
             nil,
@@ -398,8 +409,8 @@ final class VideoRecorder {
             outputBuffer,
             nil,
             .bgra8Unorm,
-            poolWidth,
-            poolHeight,
+            width,
+            height,
             0,
             &outputTextureRef
         )
