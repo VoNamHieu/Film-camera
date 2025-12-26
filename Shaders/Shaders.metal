@@ -809,6 +809,76 @@ fragment float4 toneMappingFragment(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: FLASH EFFECT SHADER (Disposable Camera) ★★★
+// Simulates on-camera flash with realistic inverse-square falloff
+// and warm tungsten tint characteristic of cheap flash units
+// ═══════════════════════════════════════════════════════════════
+
+fragment float4 flashFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant FlashParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    // Convert to linear space for physically accurate light addition
+    float3 rgb = srgbToLinear3(color.rgb);
+
+    // Calculate distance from flash position (aspect-ratio corrected)
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+    float2 uv = in.texCoord;
+    float2 flashPos = p.position;
+
+    // Correct for aspect ratio to make circular falloff
+    float2 delta = uv - flashPos;
+    delta.x *= aspect;
+    float dist = length(delta);
+
+    // Normalize distance by radius
+    float normalizedDist = dist / p.radius;
+
+    // Inverse-square-like falloff (modified for artistic control)
+    // Using pow() for controllable falloff rate
+    float falloffFactor = 1.0 / pow(1.0 + normalizedDist * normalizedDist, p.falloff * 0.5);
+
+    // Apply center boost (hotspot effect)
+    float centerFalloff = exp(-normalizedDist * normalizedDist * 4.0);
+    falloffFactor += centerFalloff * p.centerBoost;
+
+    // Calculate flash contribution
+    float flashStrength = falloffFactor * p.intensity;
+
+    // Warm tint (simulates tungsten flash)
+    // Cheap flash units typically have a warm color temperature
+    float3 warmTint = float3(1.0 + p.warmth, 1.0, 1.0 - p.warmth * 0.5);
+
+    // Flash light addition (additive blending in linear space)
+    float3 flashLight = float3(flashStrength) * warmTint;
+
+    // Shadow lift in flash area (simulates fill light)
+    // Only affects darker areas, proportional to flash strength
+    float luma = luminance(rgb);
+    float shadowMask = 1.0 - smoothstep(0.0, 0.4, luma);
+    float shadowLiftAmount = shadowMask * p.shadowLift * flashStrength;
+
+    // Apply flash
+    rgb = rgb + flashLight + float3(shadowLiftAmount);
+
+    // Soft highlight compression to prevent harsh clipping
+    // Maintains detail in bright areas while allowing natural bloom
+    rgb = rgb / (rgb + 0.5);  // Simple Reinhard-style compression
+    rgb = rgb * 1.5;           // Compensate for compression
+
+    // Convert back to sRGB
+    rgb = linearToSrgb3(saturate(rgb));
+
+    return float4(rgb, color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ★★★ NEW: SKIN TONE PROTECTION SHADER ★★★
 // ═══════════════════════════════════════════════════════════════
 
