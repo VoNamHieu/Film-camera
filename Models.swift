@@ -308,6 +308,56 @@ struct FlashConfig: Codable, Equatable {
         self.position = position
         self.radius = radius
     }
+
+    // MARK: - Static Presets
+
+    /// Harsh flash - typical disposable camera
+    static let harsh = FlashConfig(
+        enabled: true,
+        intensity: 0.7,
+        falloff: 2.5,
+        warmth: 0.05,
+        shadowLift: 0.1,
+        centerBoost: 0.25,
+        position: FlashPosition(x: 0.5, y: 0.3),
+        radius: 0.6
+    )
+
+    /// Soft flash - diffused/bounced
+    static let soft = FlashConfig(
+        enabled: true,
+        intensity: 0.45,
+        falloff: 1.5,
+        warmth: 0.12,
+        shadowLift: 0.25,
+        centerBoost: 0.1,
+        position: FlashPosition(x: 0.5, y: 0.4),
+        radius: 0.85
+    )
+
+    /// Warm flash - tungsten bulb look
+    static let warm = FlashConfig(
+        enabled: true,
+        intensity: 0.55,
+        falloff: 1.8,
+        warmth: 0.22,
+        shadowLift: 0.18,
+        centerBoost: 0.15,
+        position: FlashPosition(x: 0.5, y: 0.35),
+        radius: 0.75
+    )
+
+    /// Party/club flash - strong center, fast falloff
+    static let party = FlashConfig(
+        enabled: true,
+        intensity: 0.8,
+        falloff: 2.8,
+        warmth: 0.03,
+        shadowLift: 0.05,
+        centerBoost: 0.3,
+        position: FlashPosition(x: 0.5, y: 0.25),
+        radius: 0.5
+    )
 }
 
 struct FilmStock: Codable, Equatable {
