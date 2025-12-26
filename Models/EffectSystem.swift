@@ -580,6 +580,17 @@ struct EffectDefinition: Codable {
             effects[.lensDistortion] = .toggle(enabled: true)
         }
 
+        // Flash
+        if preset.flash.enabled {
+            effects[.flash] = .compound(values: [
+                "enabled": 1.0,
+                "intensity": preset.flash.intensity,
+                "falloff": preset.flash.falloff,
+                "warmth": preset.flash.warmth,
+                "shadowLift": preset.flash.shadowLift
+            ])
+        }
+
         return EffectDefinition(
             category: CameraCategory(from: preset.category),
             effects: effects
@@ -819,6 +830,15 @@ final class EffectStateManager: ObservableObject {
 
             case .lensDistortion:
                 preset.lensDistortion.enabled = value.isEnabled
+
+            case .flash:
+                if case .compound(let values) = value {
+                    preset.flash.enabled = values["enabled"] == 1.0
+                    preset.flash.intensity = values["intensity"] ?? 0.6
+                    preset.flash.falloff = values["falloff"] ?? 2.0
+                    preset.flash.warmth = values["warmth"] ?? 0.08
+                    preset.flash.shadowLift = values["shadowLift"] ?? 0.15
+                }
 
             default:
                 break

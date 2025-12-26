@@ -176,4 +176,17 @@ typedef struct {
     float outputAspect;     // Output drawable aspect ratio (width/height)
 } AspectScaleParams;
 
+// ★★★ NEW: FLASH EFFECT (Disposable Camera) ★★★
+// Simulates on-camera flash with realistic falloff and warm tint
+typedef struct {
+    int enabled;
+    float intensity;        // Overall flash strength (0.0-1.0)
+    float falloff;          // Radial falloff exponent (1.5-3.0)
+    float warmth;           // Warm tint amount (0.0-0.3)
+    float shadowLift;       // Lift shadows in flash area (0.0-0.5)
+    float centerBoost;      // Extra brightness at center (0.0-0.5)
+    vector_float2 position; // Flash origin (normalized 0-1)
+    float radius;           // Flash radius (0.3-1.0)
+} FlashParams;
+
 #endif /* ShaderTypes_h */

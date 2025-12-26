@@ -85,6 +85,9 @@ class RenderEngine {
     // ★★★ NEW: Aspect-Fill Scaling Pipeline ★★★
     private(set) var aspectFillScalePipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: Flash Effect Pipeline ★★★
+    private(set) var flashPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -179,6 +182,9 @@ class RenderEngine {
         // ★★★ NEW: Aspect-Fill Scaling Pipeline ★★★
         // Uses vertexAspectFill for aspect-correct scaling
         aspectFillScalePipeline = createAspectFillPipeline(fragmentName: "colorGradingFragment")
+
+        // ★★★ NEW: Flash Effect Pipeline ★★★
+        flashPipeline = createPipeline(vertex: vertexFunction, fragmentName: "flashFragment")
 
         printPipelineStatus()
     }
@@ -305,6 +311,9 @@ class RenderEngine {
         print("")
         print("   Aspect-Fill Scaling:")
         print("      aspectFillScale: \(aspectFillScalePipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Flash Effect:")
+        print("      flash:           \(flashPipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {

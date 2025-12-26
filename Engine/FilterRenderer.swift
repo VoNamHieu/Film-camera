@@ -107,7 +107,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 5: Instant Frame (for Polaroid/Instax look)
+        // PASS 5: Flash (Disposable Camera effect)
+        if preset.flash.enabled {
+            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Flash")
+            }
+        }
+
+        // PASS 6: Instant Frame (for Polaroid/Instax look)
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -544,7 +554,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 13: Instant Frame
+        // PASS 13: Flash (Disposable Camera effect)
+        if preset.flash.enabled {
+            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("Flash✓")
+            } else {
+                passResults.append("Flash✗")
+            }
+        }
+
+        // PASS 14: Instant Frame
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -834,6 +854,34 @@ class FilterRenderer {
         return output
     }
 
+    // MARK: - Flash Effect (Disposable Camera)
+
+    private func applyFlash(input: MTLTexture, config: FlashConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.flashPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.flashPipeline == nil {
+                print("❌ FilterRenderer: flashPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareFlashParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<FlashParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
     private func blitToOutput(source: MTLTexture, destination: MTLTexture, commandBuffer: MTLCommandBuffer) {
         guard let blitEncoder = commandBuffer.makeBlitCommandEncoder() else { return }
         let width = min(source.width, destination.width)
@@ -932,6 +980,19 @@ class FilterRenderer {
         params.edgeFade = 0.05
         params.cornerDarkening = 0.08
         params.enabled = config.enabled ? 1 : 0
+        return params
+    }
+
+    private func prepareFlashParams(_ config: FlashConfig) -> FlashParams {
+        var params = FlashParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.intensity = config.intensity
+        params.falloff = config.falloff
+        params.warmth = config.warmth
+        params.shadowLift = config.shadowLift
+        params.centerBoost = config.centerBoost
+        params.position = SIMD2<Float>(config.position.x, config.position.y)
+        params.radius = config.radius
         return params
     }
 }

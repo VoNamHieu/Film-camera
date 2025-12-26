@@ -275,6 +275,41 @@ struct ToneMapping: Codable, Equatable {
     }
 }
 
+// MARK: - Flash Effect (Disposable Camera)
+struct FlashPosition: Codable, Equatable {
+    var x: Float, y: Float
+    init(x: Float = 0.5, y: Float = 0.35) { self.x = x; self.y = y }
+}
+
+struct FlashConfig: Codable, Equatable {
+    var enabled: Bool
+    var intensity: Float           // Overall flash strength (0.0-1.0)
+    var falloff: Float             // Radial falloff rate (1.5-3.0, higher = faster falloff)
+    var warmth: Float              // Warm tint amount (0.0-0.3)
+    var shadowLift: Float          // Lifts shadows in flash area (0.0-0.5)
+    var centerBoost: Float         // Extra brightness at flash center (0.0-0.5)
+    var position: FlashPosition    // Flash origin position (normalized 0-1)
+    var radius: Float              // Flash radius as fraction of screen (0.3-1.0)
+
+    init(enabled: Bool = false,
+         intensity: Float = 0.6,
+         falloff: Float = 2.0,
+         warmth: Float = 0.08,
+         shadowLift: Float = 0.15,
+         centerBoost: Float = 0.2,
+         position: FlashPosition = FlashPosition(),
+         radius: Float = 0.7) {
+        self.enabled = enabled
+        self.intensity = intensity
+        self.falloff = falloff
+        self.warmth = warmth
+        self.shadowLift = shadowLift
+        self.centerBoost = centerBoost
+        self.position = position
+        self.radius = radius
+    }
+}
+
 struct FilmStock: Codable, Equatable {
     var manufacturer: String, name: String, type: String, speed: Int, year: Int, characteristics: [String]
     init(manufacturer: String = "", name: String = "", type: String = "", speed: Int = 400, year: Int = 2000, characteristics: [String] = []) {
@@ -300,6 +335,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var vignette: VignetteConfig
     var halation: HalationConfig
     var instantFrame: InstantFrameConfig
+    var flash: FlashConfig
 
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
@@ -312,7 +348,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
          rgbCurves: RGBCurves = RGBCurves(),
          grain: GrainConfig = GrainConfig(), bloom: BloomConfig = BloomConfig(),
          vignette: VignetteConfig = VignetteConfig(), halation: HalationConfig = HalationConfig(),
-         instantFrame: InstantFrameConfig = InstantFrameConfig(),
+         instantFrame: InstantFrameConfig = InstantFrameConfig(), flash: FlashConfig = FlashConfig(),
          skinToneProtection: SkinToneProtection = SkinToneProtection(),
          toneMapping: ToneMapping = ToneMapping(), filmStock: FilmStock = FilmStock()) {
 
@@ -322,7 +358,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
         self.selectiveColor = selectiveColor; self.lensDistortion = lensDistortion
         self.rgbCurves = rgbCurves
         self.grain = grain; self.bloom = bloom; self.vignette = vignette; self.halation = halation
-        self.instantFrame = instantFrame
+        self.instantFrame = instantFrame; self.flash = flash
         self.skinToneProtection = skinToneProtection
         self.toneMapping = toneMapping; self.filmStock = filmStock
     }
