@@ -1189,7 +1189,7 @@ class FilterRenderer {
         // Convert date string to digit array for 7-segment display
         // Format: "12 25 '24" → digits: [1,2,-1,2,5,-1,10,2,4]
         // -1 = space, 10 = quote, 11 = slash, 12 = dot
-        let dateString = config.formattedDate()
+        let dateString = config.format.format(Date())
         var digits: [Int32] = []
         for char in dateString {
             switch char {
@@ -1219,8 +1219,8 @@ class FilterRenderer {
         params.position = Int32(positionToInt(config.position))
 
         // Color
-        let color = config.colorPreset.color
-        params.color = SIMD3<Float>(color.r, color.g, color.b)
+        let rgb = config.color.rgb
+        params.color = SIMD3<Float>(rgb.r, rgb.g, rgb.b)
         params.opacity = config.opacity
         params.scale = config.scale
         params.marginX = config.marginX
