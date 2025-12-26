@@ -400,7 +400,6 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				"HEADER_SEARCH_PATHS[arch=*]" = "$(SRCROOT)/Shaders";
-				INFOPLIST_FILE = "Film-camera-Info.plist";
 				INFOPLIST_KEY_NSCameraUsageDescription = "App cần truy cập camera để chụp ảnh màu film.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Cho quyền lưu ảnh";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lưu ảnh vào library";
@@ -453,8 +452,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				"HEADER_SEARCH_PATHS[arch=*]" = "$(SRCROOT)/Shaders ";
-				INFOPLIST_FILE = "Film-camera-Info.plist";
+				"HEADER_SEARCH_PATHS[arch=*]" = "$(SRCROOT)/Shaders";
 				INFOPLIST_KEY_NSCameraUsageDescription = "App cần truy cập camera để chụp ảnh màu film.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Cho quyền lưu ảnh";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lưu ảnh vào library";
