@@ -980,6 +980,138 @@ struct BWConfig: Codable, Equatable {
     )
 }
 
+// MARK: - Overlays (Dust & Scratches)
+
+/// Blend mode for overlay effects
+enum OverlayBlendMode: Int, Codable, CaseIterable, Equatable {
+    case multiply = 0     // Darkens - good for dust
+    case screen = 1       // Lightens - good for light scratches
+    case overlay = 2      // Contrast blend
+    case softLight = 3    // Subtle blend
+}
+
+/// Dust overlay configuration
+struct DustConfig: Codable, Equatable {
+    var enabled: Bool
+    var density: Float            // Number of dust particles (0.0-1.0)
+    var size: Float               // Particle size (0.5-2.0)
+    var opacity: Float            // Overall opacity (0.0-1.0)
+    var variation: Float          // Size variation (0.0-1.0)
+    var clumping: Float           // How much dust clumps together (0.0-1.0)
+    var blendMode: OverlayBlendMode
+
+    init(enabled: Bool = false,
+         density: Float = 0.3,
+         size: Float = 1.0,
+         opacity: Float = 0.4,
+         variation: Float = 0.5,
+         clumping: Float = 0.3,
+         blendMode: OverlayBlendMode = .multiply) {
+        self.enabled = enabled
+        self.density = density
+        self.size = size
+        self.opacity = opacity
+        self.variation = variation
+        self.clumping = clumping
+        self.blendMode = blendMode
+    }
+}
+
+/// Scratches overlay configuration
+struct ScratchesConfig: Codable, Equatable {
+    var enabled: Bool
+    var density: Float            // Number of scratches (0.0-1.0)
+    var length: Float             // Scratch length (0.0-1.0)
+    var width: Float              // Scratch width (0.5-2.0)
+    var opacity: Float            // Overall opacity (0.0-1.0)
+    var angle: Float              // Primary angle variation (-1.0 to 1.0)
+    var vertical: Bool            // Prefer vertical scratches (film transport)
+    var blendMode: OverlayBlendMode
+
+    init(enabled: Bool = false,
+         density: Float = 0.2,
+         length: Float = 0.5,
+         width: Float = 1.0,
+         opacity: Float = 0.3,
+         angle: Float = 0.1,
+         vertical: Bool = true,
+         blendMode: OverlayBlendMode = .screen) {
+        self.enabled = enabled
+        self.density = density
+        self.length = length
+        self.width = width
+        self.opacity = opacity
+        self.angle = angle
+        self.vertical = vertical
+        self.blendMode = blendMode
+    }
+}
+
+/// Combined overlays configuration
+struct OverlaysConfig: Codable, Equatable {
+    var enabled: Bool
+    var dust: DustConfig
+    var scratches: ScratchesConfig
+    var seed: UInt32              // Random seed for consistency
+    var animate: Bool             // Animate overlays (for video)
+
+    init(enabled: Bool = false,
+         dust: DustConfig = DustConfig(),
+         scratches: ScratchesConfig = ScratchesConfig(),
+         seed: UInt32 = 0,
+         animate: Bool = false) {
+        self.enabled = enabled
+        self.dust = dust
+        self.scratches = scratches
+        self.seed = seed
+        self.animate = animate
+    }
+
+    // MARK: - Static Presets
+
+    /// Light dust - subtle vintage look
+    static let lightDust = OverlaysConfig(
+        enabled: true,
+        dust: DustConfig(enabled: true, density: 0.2, size: 0.8, opacity: 0.3),
+        scratches: ScratchesConfig(enabled: false)
+    )
+
+    /// Film scratches - projector wear
+    static let filmScratches = OverlaysConfig(
+        enabled: true,
+        dust: DustConfig(enabled: false),
+        scratches: ScratchesConfig(enabled: true, density: 0.25, length: 0.6, width: 0.8, opacity: 0.35, vertical: true)
+    )
+
+    /// Aged film - heavy dust and scratches
+    static let agedFilm = OverlaysConfig(
+        enabled: true,
+        dust: DustConfig(enabled: true, density: 0.5, size: 1.2, opacity: 0.5, clumping: 0.5),
+        scratches: ScratchesConfig(enabled: true, density: 0.4, length: 0.7, width: 1.0, opacity: 0.4)
+    )
+
+    /// Archive footage - moderate wear
+    static let archive = OverlaysConfig(
+        enabled: true,
+        dust: DustConfig(enabled: true, density: 0.35, size: 1.0, opacity: 0.4),
+        scratches: ScratchesConfig(enabled: true, density: 0.2, length: 0.5, width: 0.9, opacity: 0.3)
+    )
+
+    /// Subtle vintage - minimal imperfections
+    static let subtleVintage = OverlaysConfig(
+        enabled: true,
+        dust: DustConfig(enabled: true, density: 0.15, size: 0.7, opacity: 0.25),
+        scratches: ScratchesConfig(enabled: true, density: 0.1, length: 0.3, width: 0.6, opacity: 0.2)
+    )
+
+    /// 8mm film - heavy wear pattern
+    static let film8mm = OverlaysConfig(
+        enabled: true,
+        dust: DustConfig(enabled: true, density: 0.6, size: 1.5, opacity: 0.55, clumping: 0.6),
+        scratches: ScratchesConfig(enabled: true, density: 0.5, length: 0.8, width: 1.2, opacity: 0.45, vertical: true)
+    )
+}
+
 struct FilmStock: Codable, Equatable {
     var manufacturer: String, name: String, type: String, speed: Int, year: Int, characteristics: [String]
     init(manufacturer: String = "", name: String = "", type: String = "", speed: Int = 400, year: Int = 2000, characteristics: [String] = []) {
@@ -1010,6 +1142,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var dateStamp: DateStampConfig
     var ccdBloom: CCDBloomConfig
     var bw: BWConfig
+    var overlays: OverlaysConfig
 
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
@@ -1025,6 +1158,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
          instantFrame: InstantFrameConfig = InstantFrameConfig(), flash: FlashConfig = FlashConfig(),
          lightLeak: LightLeakConfig = LightLeakConfig(), dateStamp: DateStampConfig = DateStampConfig(),
          ccdBloom: CCDBloomConfig = CCDBloomConfig(), bw: BWConfig = BWConfig(),
+         overlays: OverlaysConfig = OverlaysConfig(),
          skinToneProtection: SkinToneProtection = SkinToneProtection(),
          toneMapping: ToneMapping = ToneMapping(), filmStock: FilmStock = FilmStock()) {
 
@@ -1035,7 +1169,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
         self.rgbCurves = rgbCurves
         self.grain = grain; self.bloom = bloom; self.vignette = vignette; self.halation = halation
         self.instantFrame = instantFrame; self.flash = flash; self.lightLeak = lightLeak; self.dateStamp = dateStamp
-        self.ccdBloom = ccdBloom; self.bw = bw
+        self.ccdBloom = ccdBloom; self.bw = bw; self.overlays = overlays
         self.skinToneProtection = skinToneProtection
         self.toneMapping = toneMapping; self.filmStock = filmStock
     }

@@ -154,6 +154,7 @@ enum EffectType: String, CaseIterable, Codable {
     case lightLeak
     case dateStamp
     case ccdBloom
+    case overlays            // Dust & Scratches
 
     // Special Effects
     case instantFrame
@@ -189,6 +190,7 @@ enum EffectType: String, CaseIterable, Codable {
         case .lightLeak: return "Light Leak"
         case .dateStamp: return "Date Stamp"
         case .ccdBloom: return "CCD Bloom"
+        case .overlays: return "Dust & Scratches"
         case .instantFrame: return "Instant Frame"
         case .skinToneProtection: return "Skin Tone Protection"
         case .toneMapping: return "Tone Mapping"
@@ -222,6 +224,7 @@ enum EffectType: String, CaseIterable, Codable {
         case .lightLeak: return "sun.haze.fill"
         case .dateStamp: return "calendar.badge.clock"
         case .ccdBloom: return "sparkle"
+        case .overlays: return "circle.dotted"
         case .instantFrame: return "photo.on.rectangle"
         case .skinToneProtection: return "face.smiling"
         case .toneMapping: return "slider.horizontal.3"
@@ -238,7 +241,7 @@ enum EffectType: String, CaseIterable, Codable {
 
         // Medium impact - moderate GPU usage
         case .clarity, .vignette, .splitTone, .lensDistortion,
-             .skinToneProtection, .toneMapping, .flash, .lightLeak, .bw:
+             .skinToneProtection, .toneMapping, .flash, .lightLeak, .bw, .overlays:
             return .medium
 
         // High impact - heavy GPU operations
@@ -353,13 +356,24 @@ enum EffectType: String, CaseIterable, Codable {
                 "brightness": 0.0,
                 "toningMode": 0.0
             ])
+
+        case .overlays:
+            return .compound(values: [
+                "enabled": 0.0,
+                "dustEnabled": 1.0,
+                "dustDensity": 0.3,
+                "dustOpacity": 0.6,
+                "scratchEnabled": 1.0,
+                "scratchDensity": 0.2,
+                "scratchOpacity": 0.5
+            ])
         }
     }
 
     /// Whether this effect supports intensity adjustment
     var hasIntensity: Bool {
         switch self {
-        case .grain, .bloom, .vignette, .halation, .flash, .lightLeak, .ccdBloom:
+        case .grain, .bloom, .vignette, .halation, .flash, .lightLeak, .ccdBloom, .overlays:
             return true
         default:
             return false
@@ -377,7 +391,7 @@ enum EffectType: String, CaseIterable, Codable {
             return .tone
         case .grain, .bloom, .vignette, .halation, .lensDistortion, .bw:
             return .film
-        case .flash, .lightLeak, .dateStamp, .ccdBloom:
+        case .flash, .lightLeak, .dateStamp, .ccdBloom, .overlays:
             return .disposable
         case .instantFrame, .skinToneProtection, .toneMapping:
             return .special
@@ -651,6 +665,19 @@ struct EffectDefinition: Codable {
                 "contrast": preset.bw.contrast,
                 "brightness": preset.bw.brightness,
                 "toningMode": toningMode
+            ])
+        }
+
+        // Overlays (Dust & Scratches)
+        if preset.overlays.enabled {
+            effects[.overlays] = .compound(values: [
+                "enabled": 1.0,
+                "dustEnabled": preset.overlays.dust.enabled ? 1.0 : 0.0,
+                "dustDensity": preset.overlays.dust.density,
+                "dustOpacity": preset.overlays.dust.opacity,
+                "scratchEnabled": preset.overlays.scratches.enabled ? 1.0 : 0.0,
+                "scratchDensity": preset.overlays.scratches.density,
+                "scratchOpacity": preset.overlays.scratches.opacity
             ])
         }
 
@@ -945,6 +972,17 @@ final class EffectStateManager: ObservableObject {
                     }
                 }
 
+            case .overlays:
+                if case .compound(let values) = value {
+                    preset.overlays.enabled = values["enabled"] == 1.0
+                    preset.overlays.dust.enabled = values["dustEnabled"] == 1.0
+                    preset.overlays.dust.density = values["dustDensity"] ?? 0.3
+                    preset.overlays.dust.opacity = values["dustOpacity"] ?? 0.6
+                    preset.overlays.scratches.enabled = values["scratchEnabled"] == 1.0
+                    preset.overlays.scratches.density = values["scratchDensity"] ?? 0.2
+                    preset.overlays.scratches.opacity = values["scratchOpacity"] ?? 0.5
+                }
+
             default:
                 break
             }
@@ -991,6 +1029,8 @@ final class EffectStateManager: ObservableObject {
     var ccdBloomEnabled: Bool { isEffectEnabled(.ccdBloom) }
 
     var bwEnabled: Bool { isEffectEnabled(.bw) }
+
+    var overlaysEnabled: Bool { isEffectEnabled(.overlays) }
 
     var instantFrameEnabled: Bool { isEffectEnabled(.instantFrame) }
 

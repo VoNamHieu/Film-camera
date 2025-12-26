@@ -157,7 +157,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 8: Instant Frame (for Polaroid/Instax look)
+        // PASS 8: Overlays (Dust & Scratches - applied to image, not frame)
+        if preset.overlays.enabled {
+            if let result = applyOverlays(input: currentInput, config: preset.overlays, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Overlays")
+            }
+        }
+
+        // PASS 9: Instant Frame (for Polaroid/Instax look)
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -644,7 +654,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 16: Instant Frame
+        // PASS 16: Overlays (Dust & Scratches - applied to image, not frame)
+        if preset.overlays.enabled {
+            if let result = applyOverlays(input: currentInput, config: preset.overlays, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("Overlays✓")
+            } else {
+                passResults.append("Overlays✗")
+            }
+        }
+
+        // PASS 17: Instant Frame
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -1348,6 +1368,64 @@ class FilterRenderer {
         params.grainIntensity = config.grainIntensity
         params.grainSize = config.grainSize
         params.grainSeed = UInt32.random(in: 0..<10000) // Random seed for each frame
+
+        return params
+    }
+
+    // MARK: - Overlays (Dust & Scratches)
+
+    private func applyOverlays(input: MTLTexture, config: OverlaysConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.overlaysPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.overlaysPipeline == nil {
+                print("❌ FilterRenderer: overlaysPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareOverlaysParams(config, textureWidth: input.width, textureHeight: input.height)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<OverlaysParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareOverlaysParams(_ config: OverlaysConfig, textureWidth: Int, textureHeight: Int) -> OverlaysParams {
+        var params = OverlaysParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Dust
+        params.dustEnabled = config.dust.enabled ? 1 : 0
+        params.dustDensity = config.dust.density
+        params.dustSize = config.dust.size
+        params.dustOpacity = config.dust.opacity
+        params.dustVariation = config.dust.variation
+        params.dustClumping = config.dust.clumping
+        params.dustBlendMode = Int32(config.dust.blendMode.rawValue)
+
+        // Scratches
+        params.scratchEnabled = config.scratches.enabled ? 1 : 0
+        params.scratchDensity = config.scratches.density
+        params.scratchLength = config.scratches.length
+        params.scratchWidth = config.scratches.width
+        params.scratchOpacity = config.scratches.opacity
+        params.scratchAngle = config.scratches.angle
+        params.scratchVertical = config.scratches.vertical ? 1 : 0
+        params.scratchBlendMode = Int32(config.scratches.blendMode.rawValue)
+
+        // Global
+        params.seed = config.animate ? UInt32.random(in: 0..<100000) : config.seed
+        params.aspectRatio = Float(textureWidth) / Float(textureHeight)
 
         return params
     }

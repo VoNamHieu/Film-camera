@@ -1555,3 +1555,203 @@ fragment float4 bwConvertFragment(
 
     return float4(saturate(result), color.a);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// OVERLAYS (Dust & Scratches)
+// Procedural dust particles and film scratches for vintage look
+// ═══════════════════════════════════════════════════════════════
+
+// Hash function for random distribution
+inline float overlayHash(float2 p, uint seed) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031 + float(seed) * 0.001);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// 2D noise for organic patterns
+inline float overlayNoise(float2 uv, uint seed) {
+    float2 i = floor(uv);
+    float2 f = fract(uv);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float a = overlayHash(i, seed);
+    float b = overlayHash(i + float2(1.0, 0.0), seed);
+    float c = overlayHash(i + float2(0.0, 1.0), seed);
+    float d = overlayHash(i + float2(1.0, 1.0), seed);
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Fractal noise for clumping
+inline float overlayFbm(float2 uv, uint seed) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 3; i++) {
+        value += amplitude * overlayNoise(uv, seed + uint(i));
+        uv *= 2.0;
+        amplitude *= 0.5;
+    }
+    return value;
+}
+
+// Generate dust particle at position
+inline float dustParticle(float2 uv, float2 center, float size, float variation, uint seed) {
+    float sizeVar = 1.0 + (overlayHash(center, seed + 100u) - 0.5) * variation;
+    float actualSize = size * sizeVar * 0.005;
+
+    float dist = length(uv - center);
+    float particle = 1.0 - smoothstep(0.0, actualSize, dist);
+
+    // Add slight irregularity to particle shape
+    float angle = atan2(uv.y - center.y, uv.x - center.x);
+    float wobble = 1.0 + 0.2 * sin(angle * 5.0 + overlayHash(center, seed + 200u) * 6.28);
+    particle *= wobble;
+
+    return saturate(particle);
+}
+
+// Generate scratch line
+inline float scratchLine(float2 uv, float2 start, float2 end, float width) {
+    float2 dir = end - start;
+    float len = length(dir);
+    if (len < 0.001) return 0.0;
+
+    dir /= len;
+    float2 toPoint = uv - start;
+
+    float along = dot(toPoint, dir);
+    if (along < 0.0 || along > len) return 0.0;
+
+    float perp = abs(dot(toPoint, float2(-dir.y, dir.x)));
+    float lineWidth = width * 0.001;
+
+    // Tapered ends
+    float taper = smoothstep(0.0, len * 0.1, along) * smoothstep(len, len * 0.9, along);
+
+    return (1.0 - smoothstep(0.0, lineWidth, perp)) * taper;
+}
+
+// Apply blend mode
+inline float3 applyOverlayBlend(float3 base, float3 overlay, int blendMode, float intensity) {
+    float3 result;
+
+    switch (blendMode) {
+        case 0: // multiply
+            result = base * overlay;
+            break;
+        case 1: // screen
+            result = 1.0 - (1.0 - base) * (1.0 - overlay);
+            break;
+        case 2: // overlay
+            result = base < 0.5 ? (2.0 * base * overlay) : (1.0 - 2.0 * (1.0 - base) * (1.0 - overlay));
+            break;
+        case 3: // softLight
+            result = overlay < 0.5
+                ? base - (1.0 - 2.0 * overlay) * base * (1.0 - base)
+                : base + (2.0 * overlay - 1.0) * (sqrt(base) - base);
+            break;
+        default:
+            result = base * overlay;
+    }
+
+    return mix(base, result, intensity);
+}
+
+fragment float4 overlaysFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant OverlaysParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    float2 uv = in.texCoord;
+    float3 result = color.rgb;
+
+    // === DUST PARTICLES ===
+    if (p.dustEnabled != 0 && p.dustDensity > 0.0) {
+        float dustMask = 0.0;
+
+        // Grid-based particle placement with variation
+        float cellSize = 0.03 / (p.dustDensity + 0.1);
+        float2 cell = floor(uv / cellSize);
+
+        // Check neighboring cells for particles
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                float2 checkCell = cell + float2(dx, dy);
+                uint cellSeed = p.seed + uint(checkCell.x * 1000.0 + checkCell.y);
+
+                // Probability of particle in this cell
+                if (overlayHash(checkCell, cellSeed) < p.dustDensity * 0.8) {
+                    // Particle position within cell
+                    float2 particlePos = (checkCell + 0.5) * cellSize;
+                    particlePos += (float2(overlayHash(checkCell, cellSeed + 1u),
+                                          overlayHash(checkCell, cellSeed + 2u)) - 0.5) * cellSize * 0.8;
+
+                    // Apply clumping
+                    if (p.dustClumping > 0.0) {
+                        float clumpNoise = overlayFbm(uv * 10.0, p.seed);
+                        if (clumpNoise < p.dustClumping * 0.5) continue;
+                    }
+
+                    dustMask += dustParticle(uv, particlePos, p.dustSize, p.dustVariation, cellSeed);
+                }
+            }
+        }
+
+        dustMask = saturate(dustMask);
+
+        if (dustMask > 0.0) {
+            float3 dustColor = float3(0.1); // Dark dust
+            result = applyOverlayBlend(result, dustColor, p.dustBlendMode, dustMask * p.dustOpacity);
+        }
+    }
+
+    // === SCRATCHES ===
+    if (p.scratchEnabled != 0 && p.scratchDensity > 0.0) {
+        float scratchMask = 0.0;
+
+        // Generate multiple scratches
+        int numScratches = int(p.scratchDensity * 15.0) + 1;
+
+        for (int i = 0; i < numScratches && i < 20; i++) {
+            uint scratchSeed = p.seed + uint(i) * 7919u;
+
+            // Random scratch position
+            float startX = overlayHash(float2(float(i), 0.0), scratchSeed);
+            float startY = overlayHash(float2(0.0, float(i)), scratchSeed + 1u);
+
+            float2 start = float2(startX, startY);
+
+            // Scratch direction (mostly vertical if preferred)
+            float baseAngle = p.scratchVertical != 0 ? 1.5708 : overlayHash(float2(float(i), float(i)), scratchSeed + 2u) * 3.14159;
+            float angleVar = p.scratchAngle * (overlayHash(float2(float(i * 2), 0.0), scratchSeed + 3u) - 0.5) * 0.5;
+            float angle = baseAngle + angleVar;
+
+            // Scratch length
+            float len = p.scratchLength * (0.5 + overlayHash(float2(float(i), float(i) * 2.0), scratchSeed + 4u) * 0.5);
+
+            float2 dir = float2(cos(angle), sin(angle));
+            float2 end = start + dir * len;
+
+            // Correct for aspect ratio
+            start.x *= p.aspectRatio;
+            end.x *= p.aspectRatio;
+            float2 uvCorrected = float2(uv.x * p.aspectRatio, uv.y);
+
+            scratchMask += scratchLine(uvCorrected, start, end, p.scratchWidth);
+        }
+
+        scratchMask = saturate(scratchMask);
+
+        if (scratchMask > 0.0) {
+            float3 scratchColor = float3(0.9); // Light scratches
+            result = applyOverlayBlend(result, scratchColor, p.scratchBlendMode, scratchMask * p.scratchOpacity);
+        }
+    }
+
+    return float4(saturate(result), color.a);
+}
