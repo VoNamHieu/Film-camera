@@ -913,13 +913,374 @@ fragment float4 skinToneProtectionFragment(
         // Protect saturation (don't over-saturate skin)
         float satProtection = mix(1.0, 0.85, p.satProtection * skinMask);
         hsl.y *= satProtection;
-        
+
         // Add slight warmth boost
         hsl.x += p.warmthBoost * skinMask * 0.02;
         if (hsl.x > 1.0) hsl.x -= 1.0;
-        
+
         rgb = hsl2rgb(hsl);
     }
-    
+
     return float4(rgb, color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: LIGHT LEAK EFFECT SHADER (Procedural) ★★★
+// Simulates light leaking through camera body seals
+// Creates organic, colored light areas typical of old/disposable cameras
+// ═══════════════════════════════════════════════════════════════
+
+// Blend mode functions for light leak
+inline float3 blendScreen(float3 base, float3 blend) {
+    return 1.0 - (1.0 - base) * (1.0 - blend);
+}
+
+inline float3 blendAdd(float3 base, float3 blend) {
+    return min(base + blend, 1.0);
+}
+
+inline float3 blendOverlay(float3 base, float3 blend) {
+    float3 result;
+    result.r = base.r < 0.5 ? (2.0 * base.r * blend.r) : (1.0 - 2.0 * (1.0 - base.r) * (1.0 - blend.r));
+    result.g = base.g < 0.5 ? (2.0 * base.g * blend.g) : (1.0 - 2.0 * (1.0 - base.g) * (1.0 - blend.g));
+    result.b = base.b < 0.5 ? (2.0 * base.b * blend.b) : (1.0 - 2.0 * (1.0 - base.b) * (1.0 - blend.b));
+    return result;
+}
+
+inline float3 blendSoftLight(float3 base, float3 blend) {
+    float3 result;
+    for (int i = 0; i < 3; i++) {
+        if (blend[i] < 0.5) {
+            result[i] = base[i] - (1.0 - 2.0 * blend[i]) * base[i] * (1.0 - base[i]);
+        } else {
+            float d = (base[i] < 0.25)
+                ? ((16.0 * base[i] - 12.0) * base[i] + 4.0) * base[i]
+                : sqrt(base[i]);
+            result[i] = base[i] + (2.0 * blend[i] - 1.0) * (d - base[i]);
+        }
+    }
+    return result;
+}
+
+// Simple hash function for procedural randomness
+inline float hash(float2 p, uint seed) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031 + float(seed) * 0.001);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// Smooth noise for organic shapes
+inline float noise(float2 uv, uint seed) {
+    float2 i = floor(uv);
+    float2 f = fract(uv);
+    f = f * f * (3.0 - 2.0 * f); // Smooth interpolation
+
+    float a = hash(i, seed);
+    float b = hash(i + float2(1.0, 0.0), seed);
+    float c = hash(i + float2(0.0, 1.0), seed);
+    float d = hash(i + float2(1.0, 1.0), seed);
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+fragment float4 lightLeakFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant LightLeakParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    float2 uv = in.texCoord;
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+
+    // Determine leak center based on type
+    // Types: 0-3 corners, 4-7 edges, 8 streak, 9 random
+    float2 leakCenter;
+    float leakAngle = 0.0;
+    uint effectiveSeed = p.seed;
+
+    // For random type, use seed to pick random position
+    if (p.leakType == 9) { // random
+        effectiveSeed = (p.seed == 0) ? uint(uv.x * 1000.0 + uv.y * 1000.0) : p.seed;
+        float randX = hash(float2(float(effectiveSeed), 0.0), effectiveSeed);
+        float randY = hash(float2(0.0, float(effectiveSeed)), effectiveSeed);
+        leakCenter = float2(randX, randY);
+        leakAngle = hash(float2(float(effectiveSeed), float(effectiveSeed)), effectiveSeed) * 6.28318;
+    } else {
+        switch (p.leakType) {
+            case 0: leakCenter = float2(0.0, 0.0); leakAngle = 0.785; break;  // cornerTopLeft
+            case 1: leakCenter = float2(1.0, 0.0); leakAngle = 2.356; break;  // cornerTopRight
+            case 2: leakCenter = float2(0.0, 1.0); leakAngle = -0.785; break; // cornerBottomLeft
+            case 3: leakCenter = float2(1.0, 1.0); leakAngle = -2.356; break; // cornerBottomRight
+            case 4: leakCenter = float2(0.5, 0.0); leakAngle = 1.571; break;  // edgeTop
+            case 5: leakCenter = float2(0.5, 1.0); leakAngle = -1.571; break; // edgeBottom
+            case 6: leakCenter = float2(0.0, 0.5); leakAngle = 0.0; break;    // edgeLeft
+            case 7: leakCenter = float2(1.0, 0.5); leakAngle = 3.14159; break;// edgeRight
+            case 8: leakCenter = float2(0.0, 0.0); leakAngle = 0.785; break;  // streak (diagonal)
+            default: leakCenter = float2(1.0, 0.0); leakAngle = 2.356; break;
+        }
+    }
+
+    // Calculate distance from leak center (aspect corrected)
+    float2 delta = uv - leakCenter;
+    delta.x *= aspect;
+
+    // For streak type, use distance to line instead of point
+    float dist;
+    if (p.leakType == 8) { // streak
+        // Distance to diagonal line
+        float2 dir = float2(cos(leakAngle), sin(leakAngle));
+        dist = abs(dot(delta, float2(-dir.y, dir.x)));
+        dist *= 0.5; // Make streak wider
+    } else {
+        dist = length(delta);
+    }
+
+    // Calculate leak intensity with soft falloff
+    float normalizedDist = dist / (p.size + 0.001);
+    float leakIntensity = 1.0 - smoothstep(0.0, 1.0 / p.softness, normalizedDist);
+
+    // Add organic noise variation
+    float noiseVal = noise(uv * 8.0 + float2(leakAngle), effectiveSeed);
+    leakIntensity *= mix(0.7, 1.0, noiseVal);
+
+    // Apply opacity
+    leakIntensity *= p.opacity;
+
+    if (leakIntensity <= 0.0) return color;
+
+    // Generate leak color based on warmth and hue shift
+    // Base orange/red for warm, cyan/blue for cool
+    float3 leakColor;
+    float hue = p.hueShift;
+
+    if (p.warmth >= 0.0) {
+        // Warm: orange to red range (hue 0.0 - 0.1)
+        hue = fract(hue + p.warmth * 0.1);
+        leakColor = hsl2rgb(float3(hue, p.saturation, 0.6));
+    } else {
+        // Cool: cyan to magenta range (hue 0.5 - 0.9)
+        hue = fract(hue + 0.5 - p.warmth * 0.2);
+        leakColor = hsl2rgb(float3(hue, p.saturation * 0.9, 0.55));
+    }
+
+    // Add variation to leak color
+    float colorNoise = noise(uv * 4.0, effectiveSeed + 1);
+    leakColor = mix(leakColor, leakColor * 1.3, colorNoise * 0.3);
+
+    // Apply blend mode
+    float3 blended;
+    switch (p.blendMode) {
+        case 0: blended = blendScreen(color.rgb, leakColor); break;
+        case 1: blended = blendAdd(color.rgb, leakColor); break;
+        case 2: blended = blendOverlay(color.rgb, leakColor); break;
+        case 3: blended = blendSoftLight(color.rgb, leakColor); break;
+        default: blended = blendScreen(color.rgb, leakColor); break;
+    }
+
+    // Mix based on leak intensity
+    float3 result = mix(color.rgb, blended, leakIntensity);
+
+    return float4(saturate(result), color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: DATE STAMP EFFECT SHADER (Procedural 7-Segment) ★★★
+// Renders date stamp directly without textures using 7-segment display
+// ═══════════════════════════════════════════════════════════════
+
+// 7-segment display encoding for digits 0-9
+// Segments: A(top), B(topRight), C(bottomRight), D(bottom), E(bottomLeft), F(topLeft), G(middle)
+//     AAA
+//    F   B
+//     GGG
+//    E   C
+//     DDD
+constant int SEGMENT_PATTERNS[13] = {
+    0b1111110,  // 0: ABCDEF
+    0b0110000,  // 1: BC
+    0b1101101,  // 2: ABDEG
+    0b1111001,  // 3: ABCDG
+    0b0110011,  // 4: BCFG
+    0b1011011,  // 5: ACDFG
+    0b1011111,  // 6: ACDEFG
+    0b1110000,  // 7: ABC
+    0b1111111,  // 8: ABCDEFG
+    0b1111011,  // 9: ABCDFG
+    0b0000000,  // 10: quote (') - rendered separately
+    0b0000001,  // 11: slash (/) - rendered as diagonal
+    0b0000000   // 12: dot (.) - rendered separately
+};
+
+// Segment dimensions (relative to digit cell)
+constant float SEGMENT_WIDTH = 0.15;
+constant float SEGMENT_LENGTH = 0.35;
+constant float DIGIT_SPACING = 0.18;
+
+// Check if point is inside a horizontal segment
+inline float horizontalSegment(float2 p, float2 center, float length, float width) {
+    float2 d = abs(p - center);
+    float box = max(d.x - length * 0.5, d.y - width * 0.5);
+    return 1.0 - smoothstep(0.0, 0.02, box);
+}
+
+// Check if point is inside a vertical segment
+inline float verticalSegment(float2 p, float2 center, float length, float width) {
+    float2 d = abs(p - center);
+    float box = max(d.x - width * 0.5, d.y - length * 0.5);
+    return 1.0 - smoothstep(0.0, 0.02, box);
+}
+
+// Render a single 7-segment digit
+inline float renderDigit(float2 uv, int digit) {
+    if (digit < 0 || digit > 12) return 0.0;
+
+    float result = 0.0;
+    int pattern = SEGMENT_PATTERNS[digit];
+
+    // Special characters
+    if (digit == 10) { // quote (')
+        float2 quotePos = float2(0.3, 0.15);
+        result = verticalSegment(uv, quotePos, 0.12, 0.08);
+        return result;
+    }
+    if (digit == 11) { // slash (/)
+        float2 d = uv - float2(0.5, 0.5);
+        float dist = abs(d.x * 0.8 + d.y * 0.6);
+        result = 1.0 - smoothstep(0.0, 0.06, dist);
+        // Clip to bounds
+        result *= step(0.1, uv.x) * step(uv.x, 0.9);
+        result *= step(0.1, uv.y) * step(uv.y, 0.9);
+        return result;
+    }
+    if (digit == 12) { // dot (.)
+        float2 dotPos = float2(0.5, 0.85);
+        float dist = length(uv - dotPos);
+        result = 1.0 - smoothstep(0.0, 0.08, dist);
+        return result;
+    }
+
+    // 7-segment display
+    float w = SEGMENT_WIDTH;
+    float l = SEGMENT_LENGTH;
+
+    // A - top horizontal
+    if (pattern & 0b1000000) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.12), l, w));
+    }
+    // B - top right vertical
+    if (pattern & 0b0100000) {
+        result = max(result, verticalSegment(uv, float2(0.75, 0.3), l, w));
+    }
+    // C - bottom right vertical
+    if (pattern & 0b0010000) {
+        result = max(result, verticalSegment(uv, float2(0.75, 0.7), l, w));
+    }
+    // D - bottom horizontal
+    if (pattern & 0b0001000) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.88), l, w));
+    }
+    // E - bottom left vertical
+    if (pattern & 0b0000100) {
+        result = max(result, verticalSegment(uv, float2(0.25, 0.7), l, w));
+    }
+    // F - top left vertical
+    if (pattern & 0b0000010) {
+        result = max(result, verticalSegment(uv, float2(0.25, 0.3), l, w));
+    }
+    // G - middle horizontal
+    if (pattern & 0b0000001) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.5), l, w));
+    }
+
+    return result;
+}
+
+fragment float4 dateStampFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant DateStampParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0 || p.digitCount == 0) return color;
+
+    float2 uv = in.texCoord;
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+
+    // Calculate stamp dimensions
+    float digitHeight = 0.05 * p.scale;
+    float digitWidth = digitHeight * 0.6;
+    float totalWidth = float(p.digitCount) * (digitWidth + DIGIT_SPACING * digitHeight) - DIGIT_SPACING * digitHeight;
+
+    // Calculate stamp position based on config
+    float2 stampOrigin;
+    switch (p.position) {
+        case 0: // bottomRight
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, 1.0 - p.marginY - digitHeight);
+            break;
+        case 1: // bottomLeft
+            stampOrigin = float2(p.marginX, 1.0 - p.marginY - digitHeight);
+            break;
+        case 2: // topRight
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, p.marginY);
+            break;
+        case 3: // topLeft
+            stampOrigin = float2(p.marginX, p.marginY);
+            break;
+        default:
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, 1.0 - p.marginY - digitHeight);
+    }
+
+    // Check if current pixel is in stamp area
+    float2 stampUV = (uv - stampOrigin);
+    if (stampUV.x < 0.0 || stampUV.y < 0.0 ||
+        stampUV.x > totalWidth || stampUV.y > digitHeight) {
+        return color;
+    }
+
+    // Determine which digit we're in
+    float stampAlpha = 0.0;
+    float digitCellWidth = digitWidth + DIGIT_SPACING * digitHeight;
+
+    for (int i = 0; i < p.digitCount && i < 10; i++) {
+        float digitStart = float(i) * digitCellWidth;
+        float digitEnd = digitStart + digitWidth;
+
+        if (stampUV.x >= digitStart && stampUV.x < digitEnd) {
+            // Normalize UV within this digit cell
+            float2 digitUV;
+            digitUV.x = (stampUV.x - digitStart) / digitWidth;
+            digitUV.y = stampUV.y / digitHeight;
+
+            stampAlpha = renderDigit(digitUV, p.digits[i]);
+            break;
+        }
+    }
+
+    if (stampAlpha <= 0.0) return color;
+
+    // Apply glow effect
+    float glowAlpha = stampAlpha;
+    if (p.glowEnabled != 0) {
+        glowAlpha = stampAlpha + stampAlpha * p.glowIntensity * 0.5;
+    }
+
+    // Blend stamp with image
+    float finalAlpha = glowAlpha * p.opacity;
+    float3 stampColor = p.color;
+
+    // Add subtle glow (additive blend for LED effect)
+    if (p.glowEnabled != 0 && stampAlpha > 0.5) {
+        color.rgb += stampColor * stampAlpha * p.glowIntensity * 0.3;
+    }
+
+    // Main stamp (alpha blend)
+    color.rgb = mix(color.rgb, stampColor, finalAlpha);
+
+    return float4(saturate(color.rgb), color.a);
 }

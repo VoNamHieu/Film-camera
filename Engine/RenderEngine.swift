@@ -88,6 +88,12 @@ class RenderEngine {
     // ★★★ NEW: Flash Effect Pipeline ★★★
     private(set) var flashPipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: Light Leak Effect Pipeline ★★★
+    private(set) var lightLeakPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Date Stamp Effect Pipeline ★★★
+    private(set) var dateStampPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -185,6 +191,12 @@ class RenderEngine {
 
         // ★★★ NEW: Flash Effect Pipeline ★★★
         flashPipeline = createPipeline(vertex: vertexFunction, fragmentName: "flashFragment")
+
+        // ★★★ NEW: Light Leak Effect Pipeline ★★★
+        lightLeakPipeline = createPipeline(vertex: vertexFunction, fragmentName: "lightLeakFragment")
+
+        // ★★★ NEW: Date Stamp Effect Pipeline ★★★
+        dateStampPipeline = createPipeline(vertex: vertexFunction, fragmentName: "dateStampFragment")
 
         printPipelineStatus()
     }
@@ -314,6 +326,12 @@ class RenderEngine {
         print("")
         print("   Flash Effect:")
         print("      flash:           \(flashPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Light Leak Effect:")
+        print("      lightLeak:       \(lightLeakPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Date Stamp Effect:")
+        print("      dateStamp:       \(dateStampPipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {
