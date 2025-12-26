@@ -591,6 +591,17 @@ struct EffectDefinition: Codable {
             ])
         }
 
+        // Light Leak
+        if preset.lightLeak.enabled {
+            effects[.lightLeak] = .compound(values: [
+                "enabled": 1.0,
+                "intensity": preset.lightLeak.opacity,
+                "size": preset.lightLeak.size,
+                "warmth": preset.lightLeak.warmth,
+                "saturation": preset.lightLeak.saturation
+            ])
+        }
+
         return EffectDefinition(
             category: CameraCategory(from: preset.category),
             effects: effects
@@ -838,6 +849,15 @@ final class EffectStateManager: ObservableObject {
                     preset.flash.falloff = values["falloff"] ?? 2.0
                     preset.flash.warmth = values["warmth"] ?? 0.08
                     preset.flash.shadowLift = values["shadowLift"] ?? 0.15
+                }
+
+            case .lightLeak:
+                if case .compound(let values) = value {
+                    preset.lightLeak.enabled = values["enabled"] == 1.0
+                    preset.lightLeak.opacity = values["intensity"] ?? 0.4
+                    preset.lightLeak.size = values["size"] ?? 0.5
+                    preset.lightLeak.warmth = values["warmth"] ?? 0.5
+                    preset.lightLeak.saturation = values["saturation"] ?? 1.0
                 }
 
             default:

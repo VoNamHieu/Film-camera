@@ -913,13 +913,176 @@ fragment float4 skinToneProtectionFragment(
         // Protect saturation (don't over-saturate skin)
         float satProtection = mix(1.0, 0.85, p.satProtection * skinMask);
         hsl.y *= satProtection;
-        
+
         // Add slight warmth boost
         hsl.x += p.warmthBoost * skinMask * 0.02;
         if (hsl.x > 1.0) hsl.x -= 1.0;
-        
+
         rgb = hsl2rgb(hsl);
     }
-    
+
     return float4(rgb, color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: LIGHT LEAK EFFECT SHADER (Procedural) ★★★
+// Simulates light leaking through camera body seals
+// Creates organic, colored light areas typical of old/disposable cameras
+// ═══════════════════════════════════════════════════════════════
+
+// Blend mode functions for light leak
+inline float3 blendScreen(float3 base, float3 blend) {
+    return 1.0 - (1.0 - base) * (1.0 - blend);
+}
+
+inline float3 blendAdd(float3 base, float3 blend) {
+    return min(base + blend, 1.0);
+}
+
+inline float3 blendOverlay(float3 base, float3 blend) {
+    float3 result;
+    result.r = base.r < 0.5 ? (2.0 * base.r * blend.r) : (1.0 - 2.0 * (1.0 - base.r) * (1.0 - blend.r));
+    result.g = base.g < 0.5 ? (2.0 * base.g * blend.g) : (1.0 - 2.0 * (1.0 - base.g) * (1.0 - blend.g));
+    result.b = base.b < 0.5 ? (2.0 * base.b * blend.b) : (1.0 - 2.0 * (1.0 - base.b) * (1.0 - blend.b));
+    return result;
+}
+
+inline float3 blendSoftLight(float3 base, float3 blend) {
+    float3 result;
+    for (int i = 0; i < 3; i++) {
+        if (blend[i] < 0.5) {
+            result[i] = base[i] - (1.0 - 2.0 * blend[i]) * base[i] * (1.0 - base[i]);
+        } else {
+            float d = (base[i] < 0.25)
+                ? ((16.0 * base[i] - 12.0) * base[i] + 4.0) * base[i]
+                : sqrt(base[i]);
+            result[i] = base[i] + (2.0 * blend[i] - 1.0) * (d - base[i]);
+        }
+    }
+    return result;
+}
+
+// Simple hash function for procedural randomness
+inline float hash(float2 p, uint seed) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031 + float(seed) * 0.001);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// Smooth noise for organic shapes
+inline float noise(float2 uv, uint seed) {
+    float2 i = floor(uv);
+    float2 f = fract(uv);
+    f = f * f * (3.0 - 2.0 * f); // Smooth interpolation
+
+    float a = hash(i, seed);
+    float b = hash(i + float2(1.0, 0.0), seed);
+    float c = hash(i + float2(0.0, 1.0), seed);
+    float d = hash(i + float2(1.0, 1.0), seed);
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+fragment float4 lightLeakFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant LightLeakParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    float2 uv = in.texCoord;
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+
+    // Determine leak center based on type
+    // Types: 0-3 corners, 4-7 edges, 8 streak, 9 random
+    float2 leakCenter;
+    float leakAngle = 0.0;
+    uint effectiveSeed = p.seed;
+
+    // For random type, use seed to pick random position
+    if (p.leakType == 9) { // random
+        effectiveSeed = (p.seed == 0) ? uint(uv.x * 1000.0 + uv.y * 1000.0) : p.seed;
+        float randX = hash(float2(float(effectiveSeed), 0.0), effectiveSeed);
+        float randY = hash(float2(0.0, float(effectiveSeed)), effectiveSeed);
+        leakCenter = float2(randX, randY);
+        leakAngle = hash(float2(float(effectiveSeed), float(effectiveSeed)), effectiveSeed) * 6.28318;
+    } else {
+        switch (p.leakType) {
+            case 0: leakCenter = float2(0.0, 0.0); leakAngle = 0.785; break;  // cornerTopLeft
+            case 1: leakCenter = float2(1.0, 0.0); leakAngle = 2.356; break;  // cornerTopRight
+            case 2: leakCenter = float2(0.0, 1.0); leakAngle = -0.785; break; // cornerBottomLeft
+            case 3: leakCenter = float2(1.0, 1.0); leakAngle = -2.356; break; // cornerBottomRight
+            case 4: leakCenter = float2(0.5, 0.0); leakAngle = 1.571; break;  // edgeTop
+            case 5: leakCenter = float2(0.5, 1.0); leakAngle = -1.571; break; // edgeBottom
+            case 6: leakCenter = float2(0.0, 0.5); leakAngle = 0.0; break;    // edgeLeft
+            case 7: leakCenter = float2(1.0, 0.5); leakAngle = 3.14159; break;// edgeRight
+            case 8: leakCenter = float2(0.0, 0.0); leakAngle = 0.785; break;  // streak (diagonal)
+            default: leakCenter = float2(1.0, 0.0); leakAngle = 2.356; break;
+        }
+    }
+
+    // Calculate distance from leak center (aspect corrected)
+    float2 delta = uv - leakCenter;
+    delta.x *= aspect;
+
+    // For streak type, use distance to line instead of point
+    float dist;
+    if (p.leakType == 8) { // streak
+        // Distance to diagonal line
+        float2 dir = float2(cos(leakAngle), sin(leakAngle));
+        dist = abs(dot(delta, float2(-dir.y, dir.x)));
+        dist *= 0.5; // Make streak wider
+    } else {
+        dist = length(delta);
+    }
+
+    // Calculate leak intensity with soft falloff
+    float normalizedDist = dist / (p.size + 0.001);
+    float leakIntensity = 1.0 - smoothstep(0.0, 1.0 / p.softness, normalizedDist);
+
+    // Add organic noise variation
+    float noiseVal = noise(uv * 8.0 + float2(leakAngle), effectiveSeed);
+    leakIntensity *= mix(0.7, 1.0, noiseVal);
+
+    // Apply opacity
+    leakIntensity *= p.opacity;
+
+    if (leakIntensity <= 0.0) return color;
+
+    // Generate leak color based on warmth and hue shift
+    // Base orange/red for warm, cyan/blue for cool
+    float3 leakColor;
+    float hue = p.hueShift;
+
+    if (p.warmth >= 0.0) {
+        // Warm: orange to red range (hue 0.0 - 0.1)
+        hue = fract(hue + p.warmth * 0.1);
+        leakColor = hsl2rgb(float3(hue, p.saturation, 0.6));
+    } else {
+        // Cool: cyan to magenta range (hue 0.5 - 0.9)
+        hue = fract(hue + 0.5 - p.warmth * 0.2);
+        leakColor = hsl2rgb(float3(hue, p.saturation * 0.9, 0.55));
+    }
+
+    // Add variation to leak color
+    float colorNoise = noise(uv * 4.0, effectiveSeed + 1);
+    leakColor = mix(leakColor, leakColor * 1.3, colorNoise * 0.3);
+
+    // Apply blend mode
+    float3 blended;
+    switch (p.blendMode) {
+        case 0: blended = blendScreen(color.rgb, leakColor); break;
+        case 1: blended = blendAdd(color.rgb, leakColor); break;
+        case 2: blended = blendOverlay(color.rgb, leakColor); break;
+        case 3: blended = blendSoftLight(color.rgb, leakColor); break;
+        default: blended = blendScreen(color.rgb, leakColor); break;
+    }
+
+    // Mix based on leak intensity
+    float3 result = mix(color.rgb, blended, leakIntensity);
+
+    return float4(saturate(result), color.a);
 }

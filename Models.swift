@@ -360,6 +360,145 @@ struct FlashConfig: Codable, Equatable {
     )
 }
 
+// MARK: - Light Leak Effect (Procedural)
+
+/// Light leak type - determines the shape and position of the leak
+enum LightLeakType: String, Codable, CaseIterable, Equatable {
+    case cornerTopLeft
+    case cornerTopRight
+    case cornerBottomLeft
+    case cornerBottomRight
+    case edgeTop
+    case edgeBottom
+    case edgeLeft
+    case edgeRight
+    case streak           // Diagonal streak across frame
+    case random           // Random position each time
+}
+
+/// Blend mode for light leak
+enum LightLeakBlendMode: Int, Codable, CaseIterable, Equatable {
+    case screen = 0       // Natural, most common
+    case add = 1          // Brighter, can blow out
+    case overlay = 2      // Higher contrast
+    case softLight = 3    // Subtle
+}
+
+struct LightLeakConfig: Codable, Equatable {
+    var enabled: Bool
+    var type: LightLeakType           // Leak position/shape
+    var opacity: Float                // Overall opacity (0.0-1.0)
+    var size: Float                   // Size of leak area (0.2-1.0)
+    var softness: Float               // Edge softness (0.1-1.0)
+    var warmth: Float                 // Color warmth (-1.0 cool to 1.0 warm)
+    var saturation: Float             // Color saturation (0.0-1.5)
+    var hueShift: Float               // Hue rotation (0.0-1.0, wraps)
+    var blendMode: LightLeakBlendMode // How leak blends with image
+    var seed: UInt32                  // Random seed for variation
+
+    init(enabled: Bool = false,
+         type: LightLeakType = .cornerTopRight,
+         opacity: Float = 0.4,
+         size: Float = 0.5,
+         softness: Float = 0.6,
+         warmth: Float = 0.5,
+         saturation: Float = 1.0,
+         hueShift: Float = 0.05,
+         blendMode: LightLeakBlendMode = .screen,
+         seed: UInt32 = 0) {
+        self.enabled = enabled
+        self.type = type
+        self.opacity = opacity
+        self.size = size
+        self.softness = softness
+        self.warmth = warmth
+        self.saturation = saturation
+        self.hueShift = hueShift
+        self.blendMode = blendMode
+        self.seed = seed
+    }
+
+    // MARK: - Static Presets
+
+    /// Warm corner leak - classic disposable camera
+    static let warmCorner = LightLeakConfig(
+        enabled: true,
+        type: .cornerTopRight,
+        opacity: 0.45,
+        size: 0.5,
+        softness: 0.65,
+        warmth: 0.7,
+        saturation: 1.1,
+        hueShift: 0.02,
+        blendMode: .screen
+    )
+
+    /// Cool edge leak - instant camera style
+    static let coolEdge = LightLeakConfig(
+        enabled: true,
+        type: .edgeLeft,
+        opacity: 0.35,
+        size: 0.4,
+        softness: 0.7,
+        warmth: -0.5,
+        saturation: 0.9,
+        hueShift: 0.6,
+        blendMode: .screen
+    )
+
+    /// Strong diagonal streak - lomography style
+    static let streak = LightLeakConfig(
+        enabled: true,
+        type: .streak,
+        opacity: 0.55,
+        size: 0.6,
+        softness: 0.5,
+        warmth: 0.8,
+        saturation: 1.3,
+        hueShift: 0.0,
+        blendMode: .add
+    )
+
+    /// Subtle vintage leak
+    static let subtle = LightLeakConfig(
+        enabled: true,
+        type: .cornerBottomLeft,
+        opacity: 0.25,
+        size: 0.35,
+        softness: 0.8,
+        warmth: 0.4,
+        saturation: 0.8,
+        hueShift: 0.05,
+        blendMode: .softLight
+    )
+
+    /// Magenta/pink leak - creative style
+    static let magenta = LightLeakConfig(
+        enabled: true,
+        type: .edgeRight,
+        opacity: 0.4,
+        size: 0.45,
+        softness: 0.6,
+        warmth: 0.0,
+        saturation: 1.2,
+        hueShift: 0.85,
+        blendMode: .screen
+    )
+
+    /// Random leak - different each shot
+    static let random = LightLeakConfig(
+        enabled: true,
+        type: .random,
+        opacity: 0.4,
+        size: 0.5,
+        softness: 0.6,
+        warmth: 0.5,
+        saturation: 1.0,
+        hueShift: 0.0,
+        blendMode: .screen
+    )
+}
+
 struct FilmStock: Codable, Equatable {
     var manufacturer: String, name: String, type: String, speed: Int, year: Int, characteristics: [String]
     init(manufacturer: String = "", name: String = "", type: String = "", speed: Int = 400, year: Int = 2000, characteristics: [String] = []) {
@@ -386,6 +525,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var halation: HalationConfig
     var instantFrame: InstantFrameConfig
     var flash: FlashConfig
+    var lightLeak: LightLeakConfig
 
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
@@ -399,6 +539,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
          grain: GrainConfig = GrainConfig(), bloom: BloomConfig = BloomConfig(),
          vignette: VignetteConfig = VignetteConfig(), halation: HalationConfig = HalationConfig(),
          instantFrame: InstantFrameConfig = InstantFrameConfig(), flash: FlashConfig = FlashConfig(),
+         lightLeak: LightLeakConfig = LightLeakConfig(),
          skinToneProtection: SkinToneProtection = SkinToneProtection(),
          toneMapping: ToneMapping = ToneMapping(), filmStock: FilmStock = FilmStock()) {
 
@@ -408,7 +549,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
         self.selectiveColor = selectiveColor; self.lensDistortion = lensDistortion
         self.rgbCurves = rgbCurves
         self.grain = grain; self.bloom = bloom; self.vignette = vignette; self.halation = halation
-        self.instantFrame = instantFrame; self.flash = flash
+        self.instantFrame = instantFrame; self.flash = flash; self.lightLeak = lightLeak
         self.skinToneProtection = skinToneProtection
         self.toneMapping = toneMapping; self.filmStock = filmStock
     }

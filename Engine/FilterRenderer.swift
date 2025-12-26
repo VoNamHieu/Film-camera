@@ -117,7 +117,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 6: Instant Frame (for Polaroid/Instax look)
+        // PASS 6: Light Leak (Procedural light leak effect)
+        if preset.lightLeak.enabled {
+            if let result = applyLightLeak(input: currentInput, config: preset.lightLeak, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("LightLeak")
+            }
+        }
+
+        // PASS 7: Instant Frame (for Polaroid/Instax look)
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -564,7 +574,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 14: Instant Frame
+        // PASS 14: Light Leak (Procedural light leak effect)
+        if preset.lightLeak.enabled {
+            if let result = applyLightLeak(input: currentInput, config: preset.lightLeak, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("LightLeak✓")
+            } else {
+                passResults.append("LightLeak✗")
+            }
+        }
+
+        // PASS 15: Instant Frame
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -994,6 +1014,64 @@ class FilterRenderer {
         params.position = SIMD2<Float>(config.position.x, config.position.y)
         params.radius = config.radius
         return params
+    }
+
+    // MARK: - Light Leak Effect (Procedural)
+
+    private func applyLightLeak(input: MTLTexture, config: LightLeakConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.lightLeakPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.lightLeakPipeline == nil {
+                print("❌ FilterRenderer: lightLeakPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareLightLeakParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<LightLeakParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareLightLeakParams(_ config: LightLeakConfig) -> LightLeakParams {
+        var params = LightLeakParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.leakType = Int32(leakTypeToInt(config.type))
+        params.opacity = config.opacity
+        params.size = config.size
+        params.softness = config.softness
+        params.warmth = config.warmth
+        params.saturation = config.saturation
+        params.hueShift = config.hueShift
+        params.blendMode = Int32(config.blendMode.rawValue)
+        params.seed = config.seed
+        return params
+    }
+
+    private func leakTypeToInt(_ type: LightLeakType) -> Int {
+        switch type {
+        case .cornerTopLeft: return 0
+        case .cornerTopRight: return 1
+        case .cornerBottomLeft: return 2
+        case .cornerBottomRight: return 3
+        case .edgeTop: return 4
+        case .edgeBottom: return 5
+        case .edgeLeft: return 6
+        case .edgeRight: return 7
+        case .streak: return 8
+        case .random: return 9
+        }
     }
 }
 

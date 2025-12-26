@@ -189,4 +189,19 @@ typedef struct {
     float radius;           // Flash radius (0.3-1.0)
 } FlashParams;
 
+// ★★★ NEW: LIGHT LEAK EFFECT (Procedural) ★★★
+// Simulates light leaking through camera body seals
+typedef struct {
+    int enabled;
+    int leakType;           // 0-9: corner/edge/streak types
+    float opacity;          // Overall opacity (0.0-1.0)
+    float size;             // Leak area size (0.2-1.0)
+    float softness;         // Edge softness (0.1-1.0)
+    float warmth;           // Color warmth (-1.0 to 1.0)
+    float saturation;       // Color saturation (0.0-1.5)
+    float hueShift;         // Hue rotation (0.0-1.0)
+    int blendMode;          // 0=screen, 1=add, 2=overlay, 3=softLight
+    uint seed;              // Random seed for variation
+} LightLeakParams;
+
 #endif /* ShaderTypes_h */
