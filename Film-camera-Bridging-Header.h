@@ -2,6 +2,6 @@
 #define Film_camera_Bridging_Header_h
 
 #import <simd/simd.h>
-#import "Shaders/ShaderTypes.h"
+#import "ShaderTypes.h"
 
 #endif
