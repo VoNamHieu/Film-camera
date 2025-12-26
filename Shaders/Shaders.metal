@@ -345,8 +345,17 @@ fragment float4 colorGradingFragment(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 3. GRAIN SHADER (Enhanced)
+// 3. GRAIN SHADER (Film-accurate)
 // ═══════════════════════════════════════════════════════════════
+
+// High-frequency film grain noise (sharper than Perlin)
+float filmGrainNoise(float2 coord, uint seed) {
+    // Use golden ratio for better distribution
+    float2 p = coord + float2(seed * 0.1031, seed * 0.1030);
+    float3 p3 = fract(float3(p.xyx) * float3(443.8975, 397.2973, 491.1871));
+    p3 += dot(p3, p3.yzx + 19.19);
+    return fract((p3.x + p3.y) * p3.z) * 2.0 - 1.0;
+}
 
 fragment float4 grainFragment(
     VertexOut in [[stage_in]],
@@ -358,30 +367,45 @@ fragment float4 grainFragment(
 
     if (p.enabled == 0) return color;
 
-    // Convert to linear for processing
-    float3 rgb = srgbToLinear3(color.rgb);
-    
+    float3 rgb = color.rgb;
+
     float2 texSize = float2(inputTexture.get_width(), inputTexture.get_height());
-    float2 grainCoord = in.texCoord * texSize / (p.size * 2.0);
 
-    // Generate noise per channel
+    // Grain coordinate - size controls grain fineness
+    float grainScale = max(0.5, p.size);
+    float2 grainCoord = in.texCoord * texSize / grainScale;
+
+    // Generate independent noise per channel (chromatic grain)
     float3 noise;
-    noise.r = noise2D(grainCoord, 100);
-    noise.g = noise2D(grainCoord, 200);
-    noise.b = noise2D(grainCoord, 300);
-    noise = (noise - 0.5) * 2.0;
+    noise.r = filmGrainNoise(grainCoord, 1u);
+    noise.g = filmGrainNoise(grainCoord * 1.01, 2u);  // Slight offset for channel separation
+    noise.b = filmGrainNoise(grainCoord * 0.99, 3u);
 
-    // Density Curve: grain peaks at midtones
-    float luma = luminance(rgb);
-    float density = 1.0 - smoothstep(0.0, 1.0, abs(luma - 0.5) * 2.5);
+    // Softness controls noise sharpness (0 = sharp, 1 = soft/blended)
+    if (p.softness > 0.01) {
+        float2 offset = 1.0 / texSize * grainScale;
+        float3 noise2;
+        noise2.r = filmGrainNoise(grainCoord + offset, 1u);
+        noise2.g = filmGrainNoise((grainCoord + offset) * 1.01, 2u);
+        noise2.b = filmGrainNoise((grainCoord + offset) * 0.99, 3u);
+        noise = mix(noise, (noise + noise2) * 0.5, p.softness);
+    }
 
-    // Apply grain in linear space
-    rgb += noise * p.channelIntensity * p.globalIntensity * density * 0.1;
+    // Film-accurate density curve: grain is stronger in midtones
+    // Shadows and highlights show less grain (characteristic of real film)
+    float luma = dot(rgb, float3(0.299, 0.587, 0.114));
+    float shadowRolloff = smoothstep(0.0, 0.15, luma);      // Less grain in deep shadows
+    float highlightRolloff = smoothstep(1.0, 0.85, luma);   // Less grain in bright highlights
+    float midtonePeak = 1.0 - pow(abs(luma - 0.45) * 1.8, 2.0);  // Peak at midtones
+    float density = shadowRolloff * highlightRolloff * max(0.3, midtonePeak);
 
-    // Convert back to sRGB
-    rgb = linearToSrgb3(saturate(rgb));
-    
-    return float4(rgb, color.a);
+    // Apply grain with channel-specific intensity
+    float3 grainAmount = noise * p.channelIntensity * p.globalIntensity * density;
+
+    // Additive grain (film-like)
+    rgb += grainAmount * 0.15;
+
+    return float4(saturate(rgb), color.a);
 }
 
 // ═══════════════════════════════════════════════════════════════
