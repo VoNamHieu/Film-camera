@@ -1643,12 +1643,22 @@ inline float3 applyOverlayBlend(float3 base, float3 overlay, int blendMode, floa
             result = 1.0 - (1.0 - base) * (1.0 - overlay);
             break;
         case 2: // overlay
-            result = base < 0.5 ? (2.0 * base * overlay) : (1.0 - 2.0 * (1.0 - base) * (1.0 - overlay));
+            // Element-wise overlay blend (can't use ternary with float3 comparison)
+            result.r = base.r < 0.5 ? (2.0 * base.r * overlay.r) : (1.0 - 2.0 * (1.0 - base.r) * (1.0 - overlay.r));
+            result.g = base.g < 0.5 ? (2.0 * base.g * overlay.g) : (1.0 - 2.0 * (1.0 - base.g) * (1.0 - overlay.g));
+            result.b = base.b < 0.5 ? (2.0 * base.b * overlay.b) : (1.0 - 2.0 * (1.0 - base.b) * (1.0 - overlay.b));
             break;
         case 3: // softLight
-            result = overlay < 0.5
-                ? base - (1.0 - 2.0 * overlay) * base * (1.0 - base)
-                : base + (2.0 * overlay - 1.0) * (sqrt(base) - base);
+            // Element-wise soft light blend
+            result.r = overlay.r < 0.5
+                ? base.r - (1.0 - 2.0 * overlay.r) * base.r * (1.0 - base.r)
+                : base.r + (2.0 * overlay.r - 1.0) * (sqrt(base.r) - base.r);
+            result.g = overlay.g < 0.5
+                ? base.g - (1.0 - 2.0 * overlay.g) * base.g * (1.0 - base.g)
+                : base.g + (2.0 * overlay.g - 1.0) * (sqrt(base.g) - base.g);
+            result.b = overlay.b < 0.5
+                ? base.b - (1.0 - 2.0 * overlay.b) * base.b * (1.0 - base.b)
+                : base.b + (2.0 * overlay.b - 1.0) * (sqrt(base.b) - base.b);
             break;
         default:
             result = base * overlay;
