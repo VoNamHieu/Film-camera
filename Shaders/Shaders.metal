@@ -1429,3 +1429,129 @@ fragment float4 ccdBloomFragment(
 
     return float4(saturate(result), color.a);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// BLACK & WHITE PIPELINE
+// Converts color image to B&W with channel mixing and toning
+// ═══════════════════════════════════════════════════════════════
+
+// Helper: HSV to RGB for toning
+float3 hsvToRgbBW(float h, float s, float v) {
+    float c = v * s;
+    float x = c * (1.0 - abs(fmod(h * 6.0, 2.0) - 1.0));
+    float m = v - c;
+
+    float3 rgb;
+    if (h < 1.0/6.0)      rgb = float3(c, x, 0);
+    else if (h < 2.0/6.0) rgb = float3(x, c, 0);
+    else if (h < 3.0/6.0) rgb = float3(0, c, x);
+    else if (h < 4.0/6.0) rgb = float3(0, x, c);
+    else if (h < 5.0/6.0) rgb = float3(x, 0, c);
+    else                  rgb = float3(c, 0, x);
+
+    return rgb + m;
+}
+
+// B&W Film grain generator
+float bwGrain(float2 uv, uint seed, float size) {
+    float2 scaled = uv * size * 500.0;
+    float n1 = fract(sin(dot(scaled + float(seed) * 0.1, float2(12.9898, 78.233))) * 43758.5453);
+    float n2 = fract(sin(dot(scaled + float(seed) * 0.2, float2(93.9898, 67.345))) * 24634.6345);
+    return (n1 + n2) * 0.5 - 0.5; // Centered around 0
+}
+
+fragment float4 bwConvertFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant BWParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.texCoord;
+
+    float4 color = inputTexture.sample(s, uv);
+
+    if (p.enabled == 0) return color;
+
+    // === CHANNEL MIXING ===
+    // Convert to grayscale with custom RGB weights
+    float luma = color.r * p.redWeight +
+                 color.g * p.greenWeight +
+                 color.b * p.blueWeight;
+
+    // Normalize if weights don't sum to 1
+    float weightSum = p.redWeight + p.greenWeight + p.blueWeight;
+    if (weightSum > 0.0) {
+        luma /= weightSum;
+    }
+
+    // === CONTRAST & BRIGHTNESS ===
+    // Apply brightness (shift)
+    luma += p.brightness;
+
+    // Apply contrast (around midpoint 0.5)
+    luma = (luma - 0.5) * (1.0 + p.contrast) + 0.5;
+
+    // Apply gamma curve
+    luma = clamp(luma, 0.0, 1.0);
+    luma = pow(luma, 1.0 / p.gamma);
+
+    // === TONING ===
+    float3 result = float3(luma);
+
+    if (p.toningMode > 0 && p.toningIntensity > 0.0) {
+        float3 toneColor = float3(1.0);
+
+        switch (p.toningMode) {
+            case 1: // Sepia - warm brown
+                toneColor = float3(1.0, 0.89, 0.71);
+                break;
+            case 2: // Selenium - cool blue-black
+                toneColor = float3(0.85, 0.88, 0.95);
+                break;
+            case 3: // Cyanotype - Prussian blue
+                toneColor = float3(0.22, 0.45, 0.65);
+                break;
+            case 4: // Split Tone
+            {
+                // Apply different colors to shadows and highlights
+                float shadowWeight = smoothstep(0.5 + p.splitBalance * 0.3, 0.2, luma);
+                float highlightWeight = smoothstep(0.5 - p.splitBalance * 0.3, 0.8, luma);
+
+                float3 shadowColor = hsvToRgbBW(p.shadowHue, p.shadowSat, 1.0);
+                float3 highlightColor = hsvToRgbBW(p.highlightHue, p.highlightSat, 1.0);
+
+                // Blend based on luminance
+                toneColor = mix(float3(1.0),
+                                mix(highlightColor, shadowColor, shadowWeight),
+                                max(shadowWeight, highlightWeight));
+                break;
+            }
+            case 5: // Custom color
+                toneColor = p.customColor;
+                break;
+        }
+
+        // Apply toning
+        if (p.toningMode == 4) {
+            // Split tone: colorize based on luminance zones
+            result = luma * toneColor;
+        } else {
+            // Standard toning: multiply gray with tone color
+            result = mix(float3(luma), luma * toneColor, p.toningIntensity);
+        }
+    }
+
+    // === B&W FILM GRAIN ===
+    if (p.grainIntensity > 0.0) {
+        float grain = bwGrain(uv, p.grainSeed, p.grainSize);
+
+        // Grain is more visible in midtones
+        float midtoneMask = 1.0 - abs(luma - 0.5) * 2.0;
+        midtoneMask = max(0.3, midtoneMask);
+
+        // Apply grain with intensity control
+        result += grain * p.grainIntensity * 0.15 * midtoneMask;
+    }
+
+    return float4(saturate(result), color.a);
+}

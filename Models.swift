@@ -751,6 +751,235 @@ struct CCDBloomConfig: Codable, Equatable {
     )
 }
 
+// MARK: - Black & White Pipeline
+
+/// Toning mode for B&W conversion
+enum BWToning: String, Codable, CaseIterable, Equatable {
+    case none           // Pure black and white
+    case sepia          // Classic warm brown
+    case selenium       // Cool blue-black, archival look
+    case cyanotype      // Prussian blue, blueprint style
+    case splitTone      // Different colors for shadows/highlights
+    case custom         // User-defined toning color
+}
+
+/// Custom toning color for B&W
+struct BWToningColor: Codable, Equatable {
+    var r: Float, g: Float, b: Float
+    init(r: Float = 0.8, g: Float = 0.7, b: Float = 0.5) { self.r = r; self.g = g; self.b = b }
+}
+
+/// Split tone configuration for B&W
+struct BWSplitTone: Codable, Equatable {
+    var shadowHue: Float        // Shadow color hue (0-1)
+    var shadowSat: Float        // Shadow saturation (0-1)
+    var highlightHue: Float     // Highlight color hue (0-1)
+    var highlightSat: Float     // Highlight saturation (0-1)
+    var balance: Float          // Balance shadows/highlights (-1 to 1)
+
+    init(shadowHue: Float = 0.08, shadowSat: Float = 0.15,
+         highlightHue: Float = 0.55, highlightSat: Float = 0.1,
+         balance: Float = 0.0) {
+        self.shadowHue = shadowHue
+        self.shadowSat = shadowSat
+        self.highlightHue = highlightHue
+        self.highlightSat = highlightSat
+        self.balance = balance
+    }
+}
+
+/// Black & White conversion configuration
+struct BWConfig: Codable, Equatable {
+    var enabled: Bool
+
+    // Channel Mixing (how RGB contributes to luminance)
+    var redWeight: Float          // Red channel weight (0.0-2.0, default ~0.3)
+    var greenWeight: Float        // Green channel weight (0.0-2.0, default ~0.59)
+    var blueWeight: Float         // Blue channel weight (0.0-2.0, default ~0.11)
+
+    // Contrast & Tone
+    var contrast: Float           // Contrast adjustment (-1.0 to 1.0)
+    var brightness: Float         // Brightness adjustment (-1.0 to 1.0)
+    var gamma: Float              // Gamma curve (0.5-2.0, 1.0 = linear)
+
+    // Toning
+    var toning: BWToning          // Toning mode
+    var toningIntensity: Float    // Toning strength (0.0-1.0)
+    var customColor: BWToningColor // Custom toning color (when toning = .custom)
+    var splitTone: BWSplitTone    // Split tone settings (when toning = .splitTone)
+
+    // Film grain simulation (B&W specific)
+    var grainIntensity: Float     // B&W grain amount (0.0-1.0)
+    var grainSize: Float          // Grain size (0.5-2.0)
+
+    init(enabled: Bool = false,
+         redWeight: Float = 0.299,
+         greenWeight: Float = 0.587,
+         blueWeight: Float = 0.114,
+         contrast: Float = 0.0,
+         brightness: Float = 0.0,
+         gamma: Float = 1.0,
+         toning: BWToning = .none,
+         toningIntensity: Float = 0.5,
+         customColor: BWToningColor = BWToningColor(),
+         splitTone: BWSplitTone = BWSplitTone(),
+         grainIntensity: Float = 0.0,
+         grainSize: Float = 1.0) {
+        self.enabled = enabled
+        self.redWeight = redWeight
+        self.greenWeight = greenWeight
+        self.blueWeight = blueWeight
+        self.contrast = contrast
+        self.brightness = brightness
+        self.gamma = gamma
+        self.toning = toning
+        self.toningIntensity = toningIntensity
+        self.customColor = customColor
+        self.splitTone = splitTone
+        self.grainIntensity = grainIntensity
+        self.grainSize = grainSize
+    }
+
+    // MARK: - Film Stock Presets
+
+    /// Kodak Tri-X 400 - High contrast, punchy blacks
+    static let triX = BWConfig(
+        enabled: true,
+        redWeight: 0.35,
+        greenWeight: 0.55,
+        blueWeight: 0.10,
+        contrast: 0.15,
+        brightness: 0.0,
+        gamma: 0.95,
+        toning: .none,
+        grainIntensity: 0.25,
+        grainSize: 1.2
+    )
+
+    /// Ilford HP5 Plus - Classic, versatile, smooth gradation
+    static let hp5Plus = BWConfig(
+        enabled: true,
+        redWeight: 0.30,
+        greenWeight: 0.58,
+        blueWeight: 0.12,
+        contrast: 0.08,
+        brightness: 0.02,
+        gamma: 1.0,
+        toning: .none,
+        grainIntensity: 0.18,
+        grainSize: 1.0
+    )
+
+    /// Kodak T-Max 400 - Fine grain, modern look
+    static let tMax = BWConfig(
+        enabled: true,
+        redWeight: 0.28,
+        greenWeight: 0.62,
+        blueWeight: 0.10,
+        contrast: 0.10,
+        brightness: 0.0,
+        gamma: 1.05,
+        toning: .none,
+        grainIntensity: 0.12,
+        grainSize: 0.8
+    )
+
+    /// Ilford Delta 100 - Ultra fine grain, smooth tones
+    static let delta = BWConfig(
+        enabled: true,
+        redWeight: 0.27,
+        greenWeight: 0.63,
+        blueWeight: 0.10,
+        contrast: 0.05,
+        brightness: 0.0,
+        gamma: 1.02,
+        toning: .none,
+        grainIntensity: 0.08,
+        grainSize: 0.6
+    )
+
+    /// Vintage Sepia - Classic sepia toned print
+    static let vintageSepia = BWConfig(
+        enabled: true,
+        redWeight: 0.35,
+        greenWeight: 0.50,
+        blueWeight: 0.15,
+        contrast: 0.08,
+        brightness: 0.05,
+        gamma: 1.0,
+        toning: .sepia,
+        toningIntensity: 0.6
+    )
+
+    /// Selenium Toned - Archival print look
+    static let seleniumToned = BWConfig(
+        enabled: true,
+        redWeight: 0.30,
+        greenWeight: 0.59,
+        blueWeight: 0.11,
+        contrast: 0.12,
+        brightness: 0.0,
+        gamma: 0.98,
+        toning: .selenium,
+        toningIntensity: 0.4
+    )
+
+    /// Cyanotype - Blueprint style
+    static let cyanotype = BWConfig(
+        enabled: true,
+        redWeight: 0.25,
+        greenWeight: 0.55,
+        blueWeight: 0.20,
+        contrast: 0.15,
+        brightness: 0.0,
+        gamma: 1.0,
+        toning: .cyanotype,
+        toningIntensity: 0.7
+    )
+
+    /// High Contrast - Dramatic look
+    static let highContrast = BWConfig(
+        enabled: true,
+        redWeight: 0.40,
+        greenWeight: 0.50,
+        blueWeight: 0.10,
+        contrast: 0.35,
+        brightness: 0.0,
+        gamma: 0.9,
+        toning: .none,
+        grainIntensity: 0.15,
+        grainSize: 1.0
+    )
+
+    /// Low Key - Dark, moody
+    static let lowKey = BWConfig(
+        enabled: true,
+        redWeight: 0.30,
+        greenWeight: 0.59,
+        blueWeight: 0.11,
+        contrast: 0.20,
+        brightness: -0.15,
+        gamma: 0.85,
+        toning: .none,
+        grainIntensity: 0.20,
+        grainSize: 1.1
+    )
+
+    /// High Key - Bright, airy
+    static let highKey = BWConfig(
+        enabled: true,
+        redWeight: 0.30,
+        greenWeight: 0.59,
+        blueWeight: 0.11,
+        contrast: -0.10,
+        brightness: 0.20,
+        gamma: 1.15,
+        toning: .none,
+        grainIntensity: 0.10,
+        grainSize: 0.8
+    )
+}
+
 struct FilmStock: Codable, Equatable {
     var manufacturer: String, name: String, type: String, speed: Int, year: Int, characteristics: [String]
     init(manufacturer: String = "", name: String = "", type: String = "", speed: Int = 400, year: Int = 2000, characteristics: [String] = []) {
@@ -780,6 +1009,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var lightLeak: LightLeakConfig
     var dateStamp: DateStampConfig
     var ccdBloom: CCDBloomConfig
+    var bw: BWConfig
 
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
@@ -794,7 +1024,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
          vignette: VignetteConfig = VignetteConfig(), halation: HalationConfig = HalationConfig(),
          instantFrame: InstantFrameConfig = InstantFrameConfig(), flash: FlashConfig = FlashConfig(),
          lightLeak: LightLeakConfig = LightLeakConfig(), dateStamp: DateStampConfig = DateStampConfig(),
-         ccdBloom: CCDBloomConfig = CCDBloomConfig(),
+         ccdBloom: CCDBloomConfig = CCDBloomConfig(), bw: BWConfig = BWConfig(),
          skinToneProtection: SkinToneProtection = SkinToneProtection(),
          toneMapping: ToneMapping = ToneMapping(), filmStock: FilmStock = FilmStock()) {
 
@@ -805,7 +1035,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
         self.rgbCurves = rgbCurves
         self.grain = grain; self.bloom = bloom; self.vignette = vignette; self.halation = halation
         self.instantFrame = instantFrame; self.flash = flash; self.lightLeak = lightLeak; self.dateStamp = dateStamp
-        self.ccdBloom = ccdBloom
+        self.ccdBloom = ccdBloom; self.bw = bw
         self.skinToneProtection = skinToneProtection
         self.toneMapping = toneMapping; self.filmStock = filmStock
     }

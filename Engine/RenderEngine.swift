@@ -97,6 +97,9 @@ class RenderEngine {
     // ★★★ NEW: CCD Bloom Effect Pipeline ★★★
     private(set) var ccdBloomPipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: Black & White Pipeline ★★★
+    private(set) var bwPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -203,6 +206,9 @@ class RenderEngine {
 
         // ★★★ NEW: CCD Bloom Effect Pipeline ★★★
         ccdBloomPipeline = createPipeline(vertex: vertexFunction, fragmentName: "ccdBloomFragment")
+
+        // ★★★ NEW: Black & White Pipeline ★★★
+        bwPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bwConvertFragment")
 
         printPipelineStatus()
     }
@@ -341,6 +347,9 @@ class RenderEngine {
         print("")
         print("   CCD Bloom Effect:")
         print("      ccdBloom:        \(ccdBloomPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   B&W Pipeline:")
+        print("      bw:              \(bwPipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {

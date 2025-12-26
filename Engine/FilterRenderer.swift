@@ -77,6 +77,16 @@ class FilterRenderer {
             failedPasses.append("ColorGrading")
         }
 
+        // PASS 1.5: Black & White Conversion (AFTER color grading for proper channel mixing)
+        if preset.bw.enabled {
+            if let result = applyBWConvert(input: currentInput, config: preset.bw, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("BWConvert")
+            }
+        }
+
         // PASS 2: Flash (BEFORE Bloom so flash areas glow)
         if preset.flash.enabled {
             if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
@@ -542,6 +552,16 @@ class FilterRenderer {
             passResults.append("ColorGrading✓")
         } else {
             passResults.append("ColorGrading✗")
+        }
+
+        // PASS 2.5: Black & White Conversion (AFTER color grading for proper channel mixing)
+        if preset.bw.enabled {
+            if let result = applyBWConvert(input: currentInput, config: preset.bw, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("BWConvert✓")
+            } else {
+                passResults.append("BWConvert✗")
+            }
         }
 
         // PASS 3: Flash (BEFORE Bloom/Halation so bright flash areas bloom)
@@ -1260,6 +1280,75 @@ class FilterRenderer {
         params.fringeWidth = config.fringeWidth
         params.warmShift = config.warmShift
         params.imageSize = SIMD2<Float>(Float(textureWidth), Float(textureHeight))
+        return params
+    }
+
+    // MARK: - Black & White Pipeline
+
+    private func applyBWConvert(input: MTLTexture, config: BWConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.bwPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.bwPipeline == nil {
+                print("❌ FilterRenderer: bwPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareBWParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<BWParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareBWParams(_ config: BWConfig) -> BWParams {
+        var params = BWParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Channel Mixing
+        params.redWeight = config.redWeight
+        params.greenWeight = config.greenWeight
+        params.blueWeight = config.blueWeight
+
+        // Contrast & Tone
+        params.contrast = config.contrast
+        params.brightness = config.brightness
+        params.gamma = config.gamma
+
+        // Toning
+        switch config.toning {
+        case .none:      params.toningMode = 0
+        case .sepia:     params.toningMode = 1
+        case .selenium:  params.toningMode = 2
+        case .cyanotype: params.toningMode = 3
+        case .splitTone: params.toningMode = 4
+        case .custom:    params.toningMode = 5
+        }
+        params.toningIntensity = config.toningIntensity
+        params.customColor = SIMD3<Float>(config.customColor.r, config.customColor.g, config.customColor.b)
+
+        // Split Tone
+        params.shadowHue = config.splitTone.shadowHue
+        params.shadowSat = config.splitTone.shadowSat
+        params.highlightHue = config.splitTone.highlightHue
+        params.highlightSat = config.splitTone.highlightSat
+        params.splitBalance = config.splitTone.balance
+
+        // Grain
+        params.grainIntensity = config.grainIntensity
+        params.grainSize = config.grainSize
+        params.grainSeed = UInt32.random(in: 0..<10000) // Random seed for each frame
+
         return params
     }
 }
