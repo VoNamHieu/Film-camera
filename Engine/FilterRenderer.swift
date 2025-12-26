@@ -77,13 +77,13 @@ class FilterRenderer {
             failedPasses.append("ColorGrading")
         }
 
-        // PASS 2: Grain (lightweight)
-        if preset.grain.enabled {
-            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+        // PASS 2: Flash (BEFORE Bloom so flash areas glow)
+        if preset.flash.enabled {
+            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
                 currentInput = result
                 passCount += 1
             } else {
-                failedPasses.append("Grain")
+                failedPasses.append("Flash")
             }
         }
 
@@ -107,13 +107,13 @@ class FilterRenderer {
             }
         }
 
-        // PASS 5: Flash (Disposable Camera effect)
-        if preset.flash.enabled {
-            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
+        // PASS 5: Grain (AFTER lighting effects for natural appearance)
+        if preset.grain.enabled {
+            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
                 currentInput = result
                 passCount += 1
             } else {
-                failedPasses.append("Flash")
+                failedPasses.append("Grain")
             }
         }
 
@@ -534,13 +534,13 @@ class FilterRenderer {
             passResults.append("ColorGrading✗")
         }
 
-        // PASS 3: Grain
-        if preset.grain.enabled {
-            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+        // PASS 3: Flash (BEFORE Bloom/Halation so bright flash areas bloom)
+        if preset.flash.enabled {
+            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
                 currentInput = result
-                passResults.append("Grain✓")
+                passResults.append("Flash✓")
             } else {
-                passResults.append("Grain✗")
+                passResults.append("Flash✗")
             }
         }
 
@@ -574,13 +574,13 @@ class FilterRenderer {
             }
         }
 
-        // PASS 13: Flash (Disposable Camera effect)
-        if preset.flash.enabled {
-            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
+        // PASS 13: Grain (AFTER lighting effects for natural appearance)
+        if preset.grain.enabled {
+            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
                 currentInput = result
-                passResults.append("Flash✓")
+                passResults.append("Grain✓")
             } else {
-                passResults.append("Flash✗")
+                passResults.append("Grain✗")
             }
         }
 
