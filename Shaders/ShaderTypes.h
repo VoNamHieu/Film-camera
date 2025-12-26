@@ -280,4 +280,33 @@ typedef struct {
     uint grainSeed;           // Random seed for grain
 } BWParams;
 
+// ★★★ NEW: OVERLAYS (Dust & Scratches) ★★★
+// Procedural dust particles and film scratches overlay
+typedef struct {
+    int enabled;
+
+    // Dust settings
+    int dustEnabled;
+    float dustDensity;        // Number of particles (0.0-1.0)
+    float dustSize;           // Particle size (0.5-2.0)
+    float dustOpacity;        // Dust opacity (0.0-1.0)
+    float dustVariation;      // Size variation (0.0-1.0)
+    float dustClumping;       // Clumping factor (0.0-1.0)
+    int dustBlendMode;        // 0=multiply, 1=screen, 2=overlay, 3=softLight
+
+    // Scratches settings
+    int scratchEnabled;
+    float scratchDensity;     // Number of scratches (0.0-1.0)
+    float scratchLength;      // Scratch length (0.0-1.0)
+    float scratchWidth;       // Scratch width (0.5-2.0)
+    float scratchOpacity;     // Scratches opacity (0.0-1.0)
+    float scratchAngle;       // Angle variation (-1.0 to 1.0)
+    int scratchVertical;      // Prefer vertical scratches
+    int scratchBlendMode;     // 0=multiply, 1=screen, 2=overlay, 3=softLight
+
+    // Global
+    uint seed;                // Random seed
+    float aspectRatio;        // For correct scaling
+} OverlaysParams;
+
 #endif /* ShaderTypes_h */

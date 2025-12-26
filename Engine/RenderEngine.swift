@@ -100,6 +100,9 @@ class RenderEngine {
     // ★★★ NEW: Black & White Pipeline ★★★
     private(set) var bwPipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: Overlays Pipeline (Dust & Scratches) ★★★
+    private(set) var overlaysPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -209,6 +212,9 @@ class RenderEngine {
 
         // ★★★ NEW: Black & White Pipeline ★★★
         bwPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bwConvertFragment")
+
+        // ★★★ NEW: Overlays Pipeline (Dust & Scratches) ★★★
+        overlaysPipeline = createPipeline(vertex: vertexFunction, fragmentName: "overlaysFragment")
 
         printPipelineStatus()
     }
@@ -350,6 +356,9 @@ class RenderEngine {
         print("")
         print("   B&W Pipeline:")
         print("      bw:              \(bwPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Overlays Pipeline:")
+        print("      overlays:        \(overlaysPipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {
