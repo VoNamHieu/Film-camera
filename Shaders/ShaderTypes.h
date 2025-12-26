@@ -204,4 +204,20 @@ typedef struct {
     uint seed;              // Random seed for variation
 } LightLeakParams;
 
+// ★★★ NEW: DATE STAMP EFFECT (Procedural 7-Segment) ★★★
+// Renders date text directly in shader using 7-segment display style
+typedef struct {
+    int enabled;
+    int digits[10];         // Up to 10 digits/chars (-1 = space, 0-9, 10=quote, 11=slash, 12=dot)
+    int digitCount;         // Number of active digits
+    int position;           // 0=bottomRight, 1=bottomLeft, 2=topRight, 3=topLeft
+    vector_float3 color;    // Text color RGB
+    float opacity;          // Overall opacity
+    float scale;            // Size multiplier
+    float marginX;          // Horizontal margin (normalized)
+    float marginY;          // Vertical margin (normalized)
+    int glowEnabled;        // LED glow effect
+    float glowIntensity;    // Glow strength
+} DateStampParams;
+
 #endif /* ShaderTypes_h */

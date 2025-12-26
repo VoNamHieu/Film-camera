@@ -602,6 +602,11 @@ struct EffectDefinition: Codable {
             ])
         }
 
+        // Date Stamp
+        if preset.dateStamp.enabled {
+            effects[.dateStamp] = .toggle(enabled: true)
+        }
+
         return EffectDefinition(
             category: CameraCategory(from: preset.category),
             effects: effects
@@ -859,6 +864,9 @@ final class EffectStateManager: ObservableObject {
                     preset.lightLeak.warmth = values["warmth"] ?? 0.5
                     preset.lightLeak.saturation = values["saturation"] ?? 1.0
                 }
+
+            case .dateStamp:
+                preset.dateStamp.enabled = value.isEnabled
 
             default:
                 break

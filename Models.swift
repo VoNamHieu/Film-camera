@@ -499,6 +499,144 @@ struct LightLeakConfig: Codable, Equatable {
     )
 }
 
+// MARK: - Date Stamp Effect
+
+/// Date stamp format styles
+enum DateStampFormat: String, Codable, CaseIterable, Equatable {
+    case short          // '24 12 25
+    case full           // 12/25/2024
+    case japanese       // 2024.12.25
+    case european       // 25.12.2024
+    case yearMonth      // '24 12
+
+    func format(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: date)
+        let month = calendar.component(.month, from: date)
+        let day = calendar.component(.day, from: date)
+        let shortYear = year % 100
+
+        switch self {
+        case .short: return String(format: "'%02d %02d %02d", shortYear, month, day)
+        case .full: return String(format: "%02d/%02d/%04d", month, day, year)
+        case .japanese: return String(format: "%04d.%02d.%02d", year, month, day)
+        case .european: return String(format: "%02d.%02d.%04d", day, month, year)
+        case .yearMonth: return String(format: "'%02d %02d", shortYear, month)
+        }
+    }
+}
+
+/// Date stamp position on image
+enum DateStampPosition: String, Codable, CaseIterable, Equatable {
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
+}
+
+/// Date stamp color preset
+enum DateStampColor: String, Codable, CaseIterable, Equatable {
+    case orange     // Classic disposable camera
+    case red        // Digicam style
+    case yellow     // Vintage
+    case green      // Night vision style
+    case white      // Clean modern
+
+    var rgb: (r: Float, g: Float, b: Float) {
+        switch self {
+        case .orange: return (1.0, 0.6, 0.2)
+        case .red: return (1.0, 0.3, 0.2)
+        case .yellow: return (1.0, 0.85, 0.3)
+        case .green: return (0.3, 1.0, 0.3)
+        case .white: return (1.0, 1.0, 1.0)
+        }
+    }
+}
+
+struct DateStampConfig: Codable, Equatable {
+    var enabled: Bool
+    var format: DateStampFormat       // Date format style
+    var position: DateStampPosition   // Position on screen
+    var color: DateStampColor         // Text color
+    var opacity: Float                // Opacity (0.0-1.0)
+    var scale: Float                  // Size multiplier (0.5-2.0)
+    var marginX: Float                // Horizontal margin (0.02-0.1)
+    var marginY: Float                // Vertical margin (0.02-0.1)
+    var glowEnabled: Bool             // LED glow effect
+    var glowIntensity: Float          // Glow strength (0.0-1.0)
+
+    init(enabled: Bool = false,
+         format: DateStampFormat = .short,
+         position: DateStampPosition = .bottomRight,
+         color: DateStampColor = .orange,
+         opacity: Float = 0.85,
+         scale: Float = 1.0,
+         marginX: Float = 0.04,
+         marginY: Float = 0.05,
+         glowEnabled: Bool = true,
+         glowIntensity: Float = 0.5) {
+        self.enabled = enabled
+        self.format = format
+        self.position = position
+        self.color = color
+        self.opacity = opacity
+        self.scale = scale
+        self.marginX = marginX
+        self.marginY = marginY
+        self.glowEnabled = glowEnabled
+        self.glowIntensity = glowIntensity
+    }
+
+    // MARK: - Static Presets
+
+    /// Classic disposable camera style (orange LCD)
+    static let disposable = DateStampConfig(
+        enabled: true,
+        format: .short,
+        position: .bottomRight,
+        color: .orange,
+        opacity: 0.85,
+        scale: 1.0,
+        glowEnabled: true,
+        glowIntensity: 0.5
+    )
+
+    /// Digital camera style (red LED)
+    static let digicam = DateStampConfig(
+        enabled: true,
+        format: .full,
+        position: .bottomRight,
+        color: .red,
+        opacity: 0.9,
+        scale: 0.8,
+        glowEnabled: false
+    )
+
+    /// Vintage film camera style
+    static let vintage = DateStampConfig(
+        enabled: true,
+        format: .short,
+        position: .bottomRight,
+        color: .yellow,
+        opacity: 0.75,
+        scale: 1.1,
+        glowEnabled: true,
+        glowIntensity: 0.6
+    )
+
+    /// Japanese camera style
+    static let japanese = DateStampConfig(
+        enabled: true,
+        format: .japanese,
+        position: .bottomRight,
+        color: .orange,
+        opacity: 0.8,
+        scale: 0.9,
+        glowEnabled: true,
+        glowIntensity: 0.4
+    )
+}
+
 struct FilmStock: Codable, Equatable {
     var manufacturer: String, name: String, type: String, speed: Int, year: Int, characteristics: [String]
     init(manufacturer: String = "", name: String = "", type: String = "", speed: Int = 400, year: Int = 2000, characteristics: [String] = []) {
@@ -526,6 +664,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var instantFrame: InstantFrameConfig
     var flash: FlashConfig
     var lightLeak: LightLeakConfig
+    var dateStamp: DateStampConfig
 
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
@@ -539,7 +678,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
          grain: GrainConfig = GrainConfig(), bloom: BloomConfig = BloomConfig(),
          vignette: VignetteConfig = VignetteConfig(), halation: HalationConfig = HalationConfig(),
          instantFrame: InstantFrameConfig = InstantFrameConfig(), flash: FlashConfig = FlashConfig(),
-         lightLeak: LightLeakConfig = LightLeakConfig(),
+         lightLeak: LightLeakConfig = LightLeakConfig(), dateStamp: DateStampConfig = DateStampConfig(),
          skinToneProtection: SkinToneProtection = SkinToneProtection(),
          toneMapping: ToneMapping = ToneMapping(), filmStock: FilmStock = FilmStock()) {
 
@@ -549,7 +688,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
         self.selectiveColor = selectiveColor; self.lensDistortion = lensDistortion
         self.rgbCurves = rgbCurves
         self.grain = grain; self.bloom = bloom; self.vignette = vignette; self.halation = halation
-        self.instantFrame = instantFrame; self.flash = flash; self.lightLeak = lightLeak
+        self.instantFrame = instantFrame; self.flash = flash; self.lightLeak = lightLeak; self.dateStamp = dateStamp
         self.skinToneProtection = skinToneProtection
         self.toneMapping = toneMapping; self.filmStock = filmStock
     }

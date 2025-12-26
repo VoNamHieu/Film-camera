@@ -1086,3 +1086,201 @@ fragment float4 lightLeakFragment(
 
     return float4(saturate(result), color.a);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: DATE STAMP EFFECT SHADER (Procedural 7-Segment) ★★★
+// Renders date stamp directly without textures using 7-segment display
+// ═══════════════════════════════════════════════════════════════
+
+// 7-segment display encoding for digits 0-9
+// Segments: A(top), B(topRight), C(bottomRight), D(bottom), E(bottomLeft), F(topLeft), G(middle)
+//     AAA
+//    F   B
+//     GGG
+//    E   C
+//     DDD
+constant int SEGMENT_PATTERNS[13] = {
+    0b1111110,  // 0: ABCDEF
+    0b0110000,  // 1: BC
+    0b1101101,  // 2: ABDEG
+    0b1111001,  // 3: ABCDG
+    0b0110011,  // 4: BCFG
+    0b1011011,  // 5: ACDFG
+    0b1011111,  // 6: ACDEFG
+    0b1110000,  // 7: ABC
+    0b1111111,  // 8: ABCDEFG
+    0b1111011,  // 9: ABCDFG
+    0b0000000,  // 10: quote (') - rendered separately
+    0b0000001,  // 11: slash (/) - rendered as diagonal
+    0b0000000   // 12: dot (.) - rendered separately
+};
+
+// Segment dimensions (relative to digit cell)
+constant float SEGMENT_WIDTH = 0.15;
+constant float SEGMENT_LENGTH = 0.35;
+constant float DIGIT_SPACING = 0.18;
+
+// Check if point is inside a horizontal segment
+inline float horizontalSegment(float2 p, float2 center, float length, float width) {
+    float2 d = abs(p - center);
+    float box = max(d.x - length * 0.5, d.y - width * 0.5);
+    return 1.0 - smoothstep(0.0, 0.02, box);
+}
+
+// Check if point is inside a vertical segment
+inline float verticalSegment(float2 p, float2 center, float length, float width) {
+    float2 d = abs(p - center);
+    float box = max(d.x - width * 0.5, d.y - length * 0.5);
+    return 1.0 - smoothstep(0.0, 0.02, box);
+}
+
+// Render a single 7-segment digit
+inline float renderDigit(float2 uv, int digit) {
+    if (digit < 0 || digit > 12) return 0.0;
+
+    float result = 0.0;
+    int pattern = SEGMENT_PATTERNS[digit];
+
+    // Special characters
+    if (digit == 10) { // quote (')
+        float2 quotePos = float2(0.3, 0.15);
+        result = verticalSegment(uv, quotePos, 0.12, 0.08);
+        return result;
+    }
+    if (digit == 11) { // slash (/)
+        float2 d = uv - float2(0.5, 0.5);
+        float dist = abs(d.x * 0.8 + d.y * 0.6);
+        result = 1.0 - smoothstep(0.0, 0.06, dist);
+        // Clip to bounds
+        result *= step(0.1, uv.x) * step(uv.x, 0.9);
+        result *= step(0.1, uv.y) * step(uv.y, 0.9);
+        return result;
+    }
+    if (digit == 12) { // dot (.)
+        float2 dotPos = float2(0.5, 0.85);
+        float dist = length(uv - dotPos);
+        result = 1.0 - smoothstep(0.0, 0.08, dist);
+        return result;
+    }
+
+    // 7-segment display
+    float w = SEGMENT_WIDTH;
+    float l = SEGMENT_LENGTH;
+
+    // A - top horizontal
+    if (pattern & 0b1000000) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.12), l, w));
+    }
+    // B - top right vertical
+    if (pattern & 0b0100000) {
+        result = max(result, verticalSegment(uv, float2(0.75, 0.3), l, w));
+    }
+    // C - bottom right vertical
+    if (pattern & 0b0010000) {
+        result = max(result, verticalSegment(uv, float2(0.75, 0.7), l, w));
+    }
+    // D - bottom horizontal
+    if (pattern & 0b0001000) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.88), l, w));
+    }
+    // E - bottom left vertical
+    if (pattern & 0b0000100) {
+        result = max(result, verticalSegment(uv, float2(0.25, 0.7), l, w));
+    }
+    // F - top left vertical
+    if (pattern & 0b0000010) {
+        result = max(result, verticalSegment(uv, float2(0.25, 0.3), l, w));
+    }
+    // G - middle horizontal
+    if (pattern & 0b0000001) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.5), l, w));
+    }
+
+    return result;
+}
+
+fragment float4 dateStampFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant DateStampParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0 || p.digitCount == 0) return color;
+
+    float2 uv = in.texCoord;
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+
+    // Calculate stamp dimensions
+    float digitHeight = 0.05 * p.scale;
+    float digitWidth = digitHeight * 0.6;
+    float totalWidth = float(p.digitCount) * (digitWidth + DIGIT_SPACING * digitHeight) - DIGIT_SPACING * digitHeight;
+
+    // Calculate stamp position based on config
+    float2 stampOrigin;
+    switch (p.position) {
+        case 0: // bottomRight
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, 1.0 - p.marginY - digitHeight);
+            break;
+        case 1: // bottomLeft
+            stampOrigin = float2(p.marginX, 1.0 - p.marginY - digitHeight);
+            break;
+        case 2: // topRight
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, p.marginY);
+            break;
+        case 3: // topLeft
+            stampOrigin = float2(p.marginX, p.marginY);
+            break;
+        default:
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, 1.0 - p.marginY - digitHeight);
+    }
+
+    // Check if current pixel is in stamp area
+    float2 stampUV = (uv - stampOrigin);
+    if (stampUV.x < 0.0 || stampUV.y < 0.0 ||
+        stampUV.x > totalWidth || stampUV.y > digitHeight) {
+        return color;
+    }
+
+    // Determine which digit we're in
+    float stampAlpha = 0.0;
+    float digitCellWidth = digitWidth + DIGIT_SPACING * digitHeight;
+
+    for (int i = 0; i < p.digitCount && i < 10; i++) {
+        float digitStart = float(i) * digitCellWidth;
+        float digitEnd = digitStart + digitWidth;
+
+        if (stampUV.x >= digitStart && stampUV.x < digitEnd) {
+            // Normalize UV within this digit cell
+            float2 digitUV;
+            digitUV.x = (stampUV.x - digitStart) / digitWidth;
+            digitUV.y = stampUV.y / digitHeight;
+
+            stampAlpha = renderDigit(digitUV, p.digits[i]);
+            break;
+        }
+    }
+
+    if (stampAlpha <= 0.0) return color;
+
+    // Apply glow effect
+    float glowAlpha = stampAlpha;
+    if (p.glowEnabled != 0) {
+        glowAlpha = stampAlpha + stampAlpha * p.glowIntensity * 0.5;
+    }
+
+    // Blend stamp with image
+    float finalAlpha = glowAlpha * p.opacity;
+    float3 stampColor = p.color;
+
+    // Add subtle glow (additive blend for LED effect)
+    if (p.glowEnabled != 0 && stampAlpha > 0.5) {
+        color.rgb += stampColor * stampAlpha * p.glowIntensity * 0.3;
+    }
+
+    // Main stamp (alpha blend)
+    color.rgb = mix(color.rgb, stampColor, finalAlpha);
+
+    return float4(saturate(color.rgb), color.a);
+}

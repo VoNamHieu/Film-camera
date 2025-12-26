@@ -127,7 +127,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 7: Instant Frame (for Polaroid/Instax look)
+        // PASS 7: Date Stamp (Procedural 7-segment display)
+        if preset.dateStamp.enabled {
+            if let result = applyDateStamp(input: currentInput, config: preset.dateStamp, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("DateStamp")
+            }
+        }
+
+        // PASS 8: Instant Frame (for Polaroid/Instax look)
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -584,7 +594,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 15: Instant Frame
+        // PASS 15: Date Stamp (Procedural 7-segment display)
+        if preset.dateStamp.enabled {
+            if let result = applyDateStamp(input: currentInput, config: preset.dateStamp, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("DateStamp✓")
+            } else {
+                passResults.append("DateStamp✗")
+            }
+        }
+
+        // PASS 16: Instant Frame
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -1071,6 +1091,110 @@ class FilterRenderer {
         case .edgeRight: return 7
         case .streak: return 8
         case .random: return 9
+        }
+    }
+
+    // MARK: - Date Stamp Effect (Procedural 7-Segment Display)
+
+    private func applyDateStamp(input: MTLTexture, config: DateStampConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.dateStampPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.dateStampPipeline == nil {
+                print("❌ FilterRenderer: dateStampPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareDateStampParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<DateStampParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareDateStampParams(_ config: DateStampConfig) -> DateStampParams {
+        var params = DateStampParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Convert date string to digit array for 7-segment display
+        // Format: "12 25 '24" → digits: [1,2,-1,2,5,-1,10,2,4]
+        // -1 = space, 10 = quote, 11 = slash, 12 = dot
+        let dateString = config.formattedDate()
+        var digits: [Int32] = []
+        for char in dateString {
+            switch char {
+            case "0"..."9":
+                digits.append(Int32(char.asciiValue! - 48)) // '0' = 48
+            case " ":
+                digits.append(-1) // space
+            case "'":
+                digits.append(10) // quote
+            case "/":
+                digits.append(11) // slash
+            case ".":
+                digits.append(12) // dot
+            default:
+                break
+            }
+        }
+
+        // Fill digits array (max 10)
+        let count = min(digits.count, 10)
+        for i in 0..<count {
+            setDigit(&params, index: i, value: digits[i])
+        }
+        params.digitCount = Int32(count)
+
+        // Position
+        params.position = Int32(positionToInt(config.position))
+
+        // Color
+        let color = config.colorPreset.color
+        params.color = SIMD3<Float>(color.r, color.g, color.b)
+        params.opacity = config.opacity
+        params.scale = config.scale
+        params.marginX = config.marginX
+        params.marginY = config.marginY
+
+        // Glow effect
+        params.glowEnabled = config.glowEnabled ? 1 : 0
+        params.glowIntensity = config.glowIntensity
+
+        return params
+    }
+
+    private func setDigit(_ params: inout DateStampParams, index: Int, value: Int32) {
+        switch index {
+        case 0: params.digits.0 = value
+        case 1: params.digits.1 = value
+        case 2: params.digits.2 = value
+        case 3: params.digits.3 = value
+        case 4: params.digits.4 = value
+        case 5: params.digits.5 = value
+        case 6: params.digits.6 = value
+        case 7: params.digits.7 = value
+        case 8: params.digits.8 = value
+        case 9: params.digits.9 = value
+        default: break
+        }
+    }
+
+    private func positionToInt(_ position: DateStampPosition) -> Int {
+        switch position {
+        case .bottomRight: return 0
+        case .bottomLeft: return 1
+        case .topRight: return 2
+        case .topLeft: return 3
         }
     }
 }
