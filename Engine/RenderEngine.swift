@@ -94,6 +94,12 @@ class RenderEngine {
     // ★★★ NEW: Date Stamp Effect Pipeline ★★★
     private(set) var dateStampPipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: CCD Bloom Effect Pipeline ★★★
+    private(set) var ccdBloomPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Black & White Pipeline ★★★
+    private(set) var bwPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -197,6 +203,12 @@ class RenderEngine {
 
         // ★★★ NEW: Date Stamp Effect Pipeline ★★★
         dateStampPipeline = createPipeline(vertex: vertexFunction, fragmentName: "dateStampFragment")
+
+        // ★★★ NEW: CCD Bloom Effect Pipeline ★★★
+        ccdBloomPipeline = createPipeline(vertex: vertexFunction, fragmentName: "ccdBloomFragment")
+
+        // ★★★ NEW: Black & White Pipeline ★★★
+        bwPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bwConvertFragment")
 
         printPipelineStatus()
     }
@@ -332,6 +344,12 @@ class RenderEngine {
         print("")
         print("   Date Stamp Effect:")
         print("      dateStamp:       \(dateStampPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   CCD Bloom Effect:")
+        print("      ccdBloom:        \(ccdBloomPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   B&W Pipeline:")
+        print("      bw:              \(bwPipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {

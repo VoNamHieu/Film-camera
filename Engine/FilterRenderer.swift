@@ -77,6 +77,16 @@ class FilterRenderer {
             failedPasses.append("ColorGrading")
         }
 
+        // PASS 1.5: Black & White Conversion (AFTER color grading for proper channel mixing)
+        if preset.bw.enabled {
+            if let result = applyBWConvert(input: currentInput, config: preset.bw, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("BWConvert")
+            }
+        }
+
         // PASS 2: Flash (BEFORE Bloom so flash areas glow)
         if preset.flash.enabled {
             if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
@@ -87,7 +97,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 3: Bloom (single-pass simplified, radius capped at 8)
+        // PASS 3: CCD Bloom (Digicam vertical smear - alternative to standard bloom)
+        if preset.ccdBloom.enabled {
+            if let result = applyCCDBloom(input: currentInput, config: preset.ccdBloom, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("CCDBloom")
+            }
+        }
+
+        // PASS 4: Bloom (single-pass simplified, radius capped at 8)
         if preset.bloom.enabled {
             if let result = applyBloomSimplified(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -534,6 +554,16 @@ class FilterRenderer {
             passResults.append("ColorGrading✗")
         }
 
+        // PASS 2.5: Black & White Conversion (AFTER color grading for proper channel mixing)
+        if preset.bw.enabled {
+            if let result = applyBWConvert(input: currentInput, config: preset.bw, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("BWConvert✓")
+            } else {
+                passResults.append("BWConvert✗")
+            }
+        }
+
         // PASS 3: Flash (BEFORE Bloom/Halation so bright flash areas bloom)
         if preset.flash.enabled {
             if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
@@ -544,7 +574,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 4-7: Bloom (Separable - 4 passes) - FULL QUALITY
+        // PASS 4: CCD Bloom (Digicam vertical smear - alternative to standard bloom)
+        if preset.ccdBloom.enabled {
+            if let result = applyCCDBloom(input: currentInput, config: preset.ccdBloom, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("CCDBloom✓")
+            } else {
+                passResults.append("CCDBloom✗")
+            }
+        }
+
+        // PASS 5-8: Bloom (Separable - 4 passes) - FULL QUALITY
         if preset.bloom.enabled {
             if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -1196,6 +1236,120 @@ class FilterRenderer {
         case .topRight: return 2
         case .topLeft: return 3
         }
+    }
+
+    // MARK: - CCD Bloom Effect (Digicam Vertical Smear)
+
+    private func applyCCDBloom(input: MTLTexture, config: CCDBloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.ccdBloomPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.ccdBloomPipeline == nil {
+                print("❌ FilterRenderer: ccdBloomPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareCCDBloomParams(config, textureWidth: input.width, textureHeight: input.height)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<CCDBloomParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareCCDBloomParams(_ config: CCDBloomConfig, textureWidth: Int, textureHeight: Int) -> CCDBloomParams {
+        var params = CCDBloomParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.intensity = config.intensity
+        params.threshold = config.threshold
+        params.verticalSmear = config.verticalSmear
+        params.smearLength = config.smearLength
+        params.smearFalloff = config.smearFalloff
+        params.horizontalBloom = config.horizontalBloom
+        params.horizontalRadius = config.horizontalRadius
+        params.purpleFringing = config.purpleFringing
+        params.fringeWidth = config.fringeWidth
+        params.warmShift = config.warmShift
+        params.imageSize = SIMD2<Float>(Float(textureWidth), Float(textureHeight))
+        return params
+    }
+
+    // MARK: - Black & White Pipeline
+
+    private func applyBWConvert(input: MTLTexture, config: BWConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.bwPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.bwPipeline == nil {
+                print("❌ FilterRenderer: bwPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareBWParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<BWParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareBWParams(_ config: BWConfig) -> BWParams {
+        var params = BWParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Channel Mixing
+        params.redWeight = config.redWeight
+        params.greenWeight = config.greenWeight
+        params.blueWeight = config.blueWeight
+
+        // Contrast & Tone
+        params.contrast = config.contrast
+        params.brightness = config.brightness
+        params.gamma = config.gamma
+
+        // Toning
+        switch config.toning {
+        case .none:      params.toningMode = 0
+        case .sepia:     params.toningMode = 1
+        case .selenium:  params.toningMode = 2
+        case .cyanotype: params.toningMode = 3
+        case .splitTone: params.toningMode = 4
+        case .custom:    params.toningMode = 5
+        }
+        params.toningIntensity = config.toningIntensity
+        params.customColor = SIMD3<Float>(config.customColor.r, config.customColor.g, config.customColor.b)
+
+        // Split Tone
+        params.shadowHue = config.splitTone.shadowHue
+        params.shadowSat = config.splitTone.shadowSat
+        params.highlightHue = config.splitTone.highlightHue
+        params.highlightSat = config.splitTone.highlightSat
+        params.splitBalance = config.splitTone.balance
+
+        // Grain
+        params.grainIntensity = config.grainIntensity
+        params.grainSize = config.grainSize
+        params.grainSeed = UInt32.random(in: 0..<10000) // Random seed for each frame
+
+        return params
     }
 }
 

@@ -220,4 +220,64 @@ typedef struct {
     float glowIntensity;    // Glow strength
 } DateStampParams;
 
+// ★★★ NEW: CCD BLOOM EFFECT (Digicam) ★★★
+// Simulates vertical smear and purple fringing of CCD sensors
+typedef struct {
+    int enabled;
+    float intensity;          // Overall intensity (0.0-1.0)
+    float threshold;          // Brightness threshold (0.5-1.0)
+
+    // Vertical Smear (CCD charge leak)
+    float verticalSmear;      // Vertical smear intensity (0.0-1.0)
+    float smearLength;        // Smear length (normalized 0.0-1.0)
+    float smearFalloff;       // Falloff curve (1.0=linear, 2.0=quadratic)
+
+    // Horizontal Bloom
+    float horizontalBloom;    // Horizontal bloom intensity (0.0-0.5)
+    float horizontalRadius;   // Horizontal blur radius (0.0-1.0)
+
+    // Purple Fringing
+    float purpleFringing;     // Purple fringe intensity (0.0-0.5)
+    float fringeWidth;        // Fringe width (normalized)
+
+    // Color
+    float warmShift;          // Warm color shift in bloom (0.0-0.3)
+
+    // Image dimensions
+    vector_float2 imageSize;  // Width, Height for pixel calculations
+} CCDBloomParams;
+
+// ★★★ NEW: BLACK & WHITE PIPELINE ★★★
+// Converts image to B&W with channel mixing and optional toning
+typedef struct {
+    int enabled;
+
+    // Channel Mixing (RGB contribution to luminance)
+    float redWeight;          // Red channel weight (0.0-2.0)
+    float greenWeight;        // Green channel weight (0.0-2.0)
+    float blueWeight;         // Blue channel weight (0.0-2.0)
+
+    // Contrast & Tone
+    float contrast;           // Contrast adjustment (-1.0 to 1.0)
+    float brightness;         // Brightness adjustment (-1.0 to 1.0)
+    float gamma;              // Gamma curve (0.5-2.0, 1.0 = linear)
+
+    // Toning
+    int toningMode;           // 0=none, 1=sepia, 2=selenium, 3=cyanotype, 4=splitTone, 5=custom
+    float toningIntensity;    // Toning strength (0.0-1.0)
+    vector_float3 customColor;// Custom toning color RGB
+
+    // Split Tone (when toningMode = 4)
+    float shadowHue;          // Shadow color hue (0-1)
+    float shadowSat;          // Shadow saturation (0-1)
+    float highlightHue;       // Highlight color hue (0-1)
+    float highlightSat;       // Highlight saturation (0-1)
+    float splitBalance;       // Balance shadows/highlights (-1 to 1)
+
+    // B&W Grain
+    float grainIntensity;     // Grain amount (0.0-1.0)
+    float grainSize;          // Grain size (0.5-2.0)
+    uint grainSeed;           // Random seed for grain
+} BWParams;
+
 #endif /* ShaderTypes_h */

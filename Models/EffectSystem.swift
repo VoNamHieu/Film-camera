@@ -147,6 +147,7 @@ enum EffectType: String, CaseIterable, Codable {
     case vignette
     case halation
     case lensDistortion
+    case bw                 // Black & White Pipeline
 
     // Disposable/Flash Effects
     case flash
@@ -183,6 +184,7 @@ enum EffectType: String, CaseIterable, Codable {
         case .vignette: return "Vignette"
         case .halation: return "Halation"
         case .lensDistortion: return "Lens Distortion"
+        case .bw: return "Black & White"
         case .flash: return "Flash"
         case .lightLeak: return "Light Leak"
         case .dateStamp: return "Date Stamp"
@@ -215,6 +217,7 @@ enum EffectType: String, CaseIterable, Codable {
         case .vignette: return "viewfinder"
         case .halation: return "light.beacon.max"
         case .lensDistortion: return "camera.aperture"
+        case .bw: return "moon.circle"
         case .flash: return "bolt.fill"
         case .lightLeak: return "sun.haze.fill"
         case .dateStamp: return "calendar.badge.clock"
@@ -235,7 +238,7 @@ enum EffectType: String, CaseIterable, Codable {
 
         // Medium impact - moderate GPU usage
         case .clarity, .vignette, .splitTone, .lensDistortion,
-             .skinToneProtection, .toneMapping, .flash, .lightLeak:
+             .skinToneProtection, .toneMapping, .flash, .lightLeak, .bw:
             return .medium
 
         // High impact - heavy GPU operations
@@ -339,6 +342,17 @@ enum EffectType: String, CaseIterable, Codable {
                 "threshold": 0.7,
                 "spread": 0.5
             ])
+
+        case .bw:
+            return .compound(values: [
+                "enabled": 0.0,
+                "redWeight": 0.299,
+                "greenWeight": 0.587,
+                "blueWeight": 0.114,
+                "contrast": 0.0,
+                "brightness": 0.0,
+                "toningMode": 0.0
+            ])
         }
     }
 
@@ -361,7 +375,7 @@ enum EffectType: String, CaseIterable, Codable {
             return .color
         case .splitTone, .rgbCurves, .selectiveColor:
             return .tone
-        case .grain, .bloom, .vignette, .halation, .lensDistortion:
+        case .grain, .bloom, .vignette, .halation, .lensDistortion, .bw:
             return .film
         case .flash, .lightLeak, .dateStamp, .ccdBloom:
             return .disposable
@@ -605,6 +619,39 @@ struct EffectDefinition: Codable {
         // Date Stamp
         if preset.dateStamp.enabled {
             effects[.dateStamp] = .toggle(enabled: true)
+        }
+
+        // CCD Bloom
+        if preset.ccdBloom.enabled {
+            effects[.ccdBloom] = .compound(values: [
+                "enabled": 1.0,
+                "intensity": preset.ccdBloom.intensity,
+                "threshold": preset.ccdBloom.threshold,
+                "verticalSmear": preset.ccdBloom.verticalSmear,
+                "purpleFringing": preset.ccdBloom.purpleFringing
+            ])
+        }
+
+        // Black & White
+        if preset.bw.enabled {
+            var toningMode: Float = 0
+            switch preset.bw.toning {
+            case .none: toningMode = 0
+            case .sepia: toningMode = 1
+            case .selenium: toningMode = 2
+            case .cyanotype: toningMode = 3
+            case .splitTone: toningMode = 4
+            case .custom: toningMode = 5
+            }
+            effects[.bw] = .compound(values: [
+                "enabled": 1.0,
+                "redWeight": preset.bw.redWeight,
+                "greenWeight": preset.bw.greenWeight,
+                "blueWeight": preset.bw.blueWeight,
+                "contrast": preset.bw.contrast,
+                "brightness": preset.bw.brightness,
+                "toningMode": toningMode
+            ])
         }
 
         return EffectDefinition(
@@ -868,6 +915,36 @@ final class EffectStateManager: ObservableObject {
             case .dateStamp:
                 preset.dateStamp.enabled = value.isEnabled
 
+            case .ccdBloom:
+                if case .compound(let values) = value {
+                    preset.ccdBloom.enabled = values["enabled"] == 1.0
+                    preset.ccdBloom.intensity = values["intensity"] ?? 0.5
+                    preset.ccdBloom.threshold = values["threshold"] ?? 0.7
+                    preset.ccdBloom.verticalSmear = values["verticalSmear"] ?? 0.3
+                    preset.ccdBloom.purpleFringing = values["purpleFringing"] ?? 0.2
+                }
+
+            case .bw:
+                if case .compound(let values) = value {
+                    preset.bw.enabled = values["enabled"] == 1.0
+                    preset.bw.redWeight = values["redWeight"] ?? 0.299
+                    preset.bw.greenWeight = values["greenWeight"] ?? 0.587
+                    preset.bw.blueWeight = values["blueWeight"] ?? 0.114
+                    preset.bw.contrast = values["contrast"] ?? 0.0
+                    preset.bw.brightness = values["brightness"] ?? 0.0
+                    // Map toning mode
+                    let toningMode = Int(values["toningMode"] ?? 0)
+                    switch toningMode {
+                    case 0: preset.bw.toning = .none
+                    case 1: preset.bw.toning = .sepia
+                    case 2: preset.bw.toning = .selenium
+                    case 3: preset.bw.toning = .cyanotype
+                    case 4: preset.bw.toning = .splitTone
+                    case 5: preset.bw.toning = .custom
+                    default: preset.bw.toning = .none
+                    }
+                }
+
             default:
                 break
             }
@@ -912,6 +989,8 @@ final class EffectStateManager: ObservableObject {
 
     var ccdBloomIntensity: Float { effectIntensity(for: .ccdBloom) }
     var ccdBloomEnabled: Bool { isEffectEnabled(.ccdBloom) }
+
+    var bwEnabled: Bool { isEffectEnabled(.bw) }
 
     var instantFrameEnabled: Bool { isEffectEnabled(.instantFrame) }
 
