@@ -201,7 +201,7 @@ typedef struct {
     float saturation;       // Color saturation (0.0-1.5)
     float hueShift;         // Hue rotation (0.0-1.0)
     int blendMode;          // 0=screen, 1=add, 2=overlay, 3=softLight
-    uint seed;              // Random seed for variation
+    unsigned int seed;      // Random seed for variation
 } LightLeakParams;
 
 // ★★★ NEW: DATE STAMP EFFECT (Procedural 7-Segment) ★★★
@@ -277,7 +277,7 @@ typedef struct {
     // B&W Grain
     float grainIntensity;     // Grain amount (0.0-1.0)
     float grainSize;          // Grain size (0.5-2.0)
-    uint grainSeed;           // Random seed for grain
+    unsigned int grainSeed;   // Random seed for grain
 } BWParams;
 
 // ★★★ NEW: OVERLAYS (Dust & Scratches) ★★★
@@ -305,7 +305,7 @@ typedef struct {
     int scratchBlendMode;     // 0=multiply, 1=screen, 2=overlay, 3=softLight
 
     // Global
-    uint seed;                // Random seed
+    unsigned int seed;        // Random seed
     float aspectRatio;        // For correct scaling
 } OverlaysParams;
 
