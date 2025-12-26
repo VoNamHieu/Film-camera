@@ -637,6 +637,120 @@ struct DateStampConfig: Codable, Equatable {
     )
 }
 
+// MARK: - CCD Bloom Effect (Digicam-specific)
+
+/// CCD Bloom simulates the vertical smear and purple fringing
+/// characteristic of early 2000s digital cameras with CCD sensors
+struct CCDBloomConfig: Codable, Equatable {
+    var enabled: Bool
+
+    // Bloom Settings
+    var intensity: Float              // Overall intensity (0.0-1.0)
+    var threshold: Float              // Brightness threshold (0.5-1.0)
+
+    // Vertical Smear (CCD charge leak)
+    var verticalSmear: Float          // Vertical smear intensity (0.0-1.0)
+    var smearLength: Float            // Smear length in relative units (0.0-1.0)
+    var smearFalloff: Float           // Falloff curve (1.0=linear, 2.0=quadratic)
+
+    // Horizontal Bloom
+    var horizontalBloom: Float        // Horizontal bloom intensity (0.0-0.5)
+    var horizontalRadius: Float       // Horizontal blur radius (0.0-1.0)
+
+    // Purple Fringing
+    var purpleFringing: Float         // Purple fringe intensity (0.0-0.5)
+    var fringeWidth: Float            // Fringe width (0.0-1.0)
+
+    // Color
+    var warmShift: Float              // Warm color shift in bloom areas (0.0-0.3)
+
+    init(enabled: Bool = false,
+         intensity: Float = 0.5,
+         threshold: Float = 0.7,
+         verticalSmear: Float = 0.3,
+         smearLength: Float = 0.15,
+         smearFalloff: Float = 1.5,
+         horizontalBloom: Float = 0.15,
+         horizontalRadius: Float = 0.05,
+         purpleFringing: Float = 0.2,
+         fringeWidth: Float = 0.01,
+         warmShift: Float = 0.1) {
+        self.enabled = enabled
+        self.intensity = intensity
+        self.threshold = threshold
+        self.verticalSmear = verticalSmear
+        self.smearLength = smearLength
+        self.smearFalloff = smearFalloff
+        self.horizontalBloom = horizontalBloom
+        self.horizontalRadius = horizontalRadius
+        self.purpleFringing = purpleFringing
+        self.fringeWidth = fringeWidth
+        self.warmShift = warmShift
+    }
+
+    // MARK: - Static Presets
+
+    /// Sony Cybershot style (early 2000s) - heavy vertical smear
+    static let cybershot = CCDBloomConfig(
+        enabled: true,
+        intensity: 0.5,
+        threshold: 0.65,
+        verticalSmear: 0.35,
+        smearLength: 0.2,
+        smearFalloff: 1.5,
+        horizontalBloom: 0.2,
+        horizontalRadius: 0.06,
+        purpleFringing: 0.25,
+        fringeWidth: 0.012,
+        warmShift: 0.1
+    )
+
+    /// Canon PowerShot style - moderate artifacts
+    static let powershot = CCDBloomConfig(
+        enabled: true,
+        intensity: 0.4,
+        threshold: 0.7,
+        verticalSmear: 0.25,
+        smearLength: 0.12,
+        smearFalloff: 1.8,
+        horizontalBloom: 0.1,
+        horizontalRadius: 0.04,
+        purpleFringing: 0.15,
+        fringeWidth: 0.008,
+        warmShift: 0.08
+    )
+
+    /// Extreme/artistic - heavy artifacts for creative effect
+    static let extreme = CCDBloomConfig(
+        enabled: true,
+        intensity: 0.7,
+        threshold: 0.55,
+        verticalSmear: 0.5,
+        smearLength: 0.3,
+        smearFalloff: 1.2,
+        horizontalBloom: 0.3,
+        horizontalRadius: 0.08,
+        purpleFringing: 0.4,
+        fringeWidth: 0.015,
+        warmShift: 0.15
+    )
+
+    /// Subtle - modern digicam with minimal artifacts
+    static let subtle = CCDBloomConfig(
+        enabled: true,
+        intensity: 0.25,
+        threshold: 0.8,
+        verticalSmear: 0.15,
+        smearLength: 0.08,
+        smearFalloff: 2.0,
+        horizontalBloom: 0.05,
+        horizontalRadius: 0.02,
+        purpleFringing: 0.1,
+        fringeWidth: 0.005,
+        warmShift: 0.05
+    )
+}
+
 struct FilmStock: Codable, Equatable {
     var manufacturer: String, name: String, type: String, speed: Int, year: Int, characteristics: [String]
     init(manufacturer: String = "", name: String = "", type: String = "", speed: Int = 400, year: Int = 2000, characteristics: [String] = []) {
@@ -665,6 +779,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var flash: FlashConfig
     var lightLeak: LightLeakConfig
     var dateStamp: DateStampConfig
+    var ccdBloom: CCDBloomConfig
 
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
@@ -679,6 +794,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
          vignette: VignetteConfig = VignetteConfig(), halation: HalationConfig = HalationConfig(),
          instantFrame: InstantFrameConfig = InstantFrameConfig(), flash: FlashConfig = FlashConfig(),
          lightLeak: LightLeakConfig = LightLeakConfig(), dateStamp: DateStampConfig = DateStampConfig(),
+         ccdBloom: CCDBloomConfig = CCDBloomConfig(),
          skinToneProtection: SkinToneProtection = SkinToneProtection(),
          toneMapping: ToneMapping = ToneMapping(), filmStock: FilmStock = FilmStock()) {
 
@@ -689,6 +805,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
         self.rgbCurves = rgbCurves
         self.grain = grain; self.bloom = bloom; self.vignette = vignette; self.halation = halation
         self.instantFrame = instantFrame; self.flash = flash; self.lightLeak = lightLeak; self.dateStamp = dateStamp
+        self.ccdBloom = ccdBloom
         self.skinToneProtection = skinToneProtection
         self.toneMapping = toneMapping; self.filmStock = filmStock
     }

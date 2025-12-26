@@ -607,6 +607,17 @@ struct EffectDefinition: Codable {
             effects[.dateStamp] = .toggle(enabled: true)
         }
 
+        // CCD Bloom
+        if preset.ccdBloom.enabled {
+            effects[.ccdBloom] = .compound(values: [
+                "enabled": 1.0,
+                "intensity": preset.ccdBloom.intensity,
+                "threshold": preset.ccdBloom.threshold,
+                "verticalSmear": preset.ccdBloom.verticalSmear,
+                "purpleFringing": preset.ccdBloom.purpleFringing
+            ])
+        }
+
         return EffectDefinition(
             category: CameraCategory(from: preset.category),
             effects: effects
@@ -867,6 +878,15 @@ final class EffectStateManager: ObservableObject {
 
             case .dateStamp:
                 preset.dateStamp.enabled = value.isEnabled
+
+            case .ccdBloom:
+                if case .compound(let values) = value {
+                    preset.ccdBloom.enabled = values["enabled"] == 1.0
+                    preset.ccdBloom.intensity = values["intensity"] ?? 0.5
+                    preset.ccdBloom.threshold = values["threshold"] ?? 0.7
+                    preset.ccdBloom.verticalSmear = values["verticalSmear"] ?? 0.3
+                    preset.ccdBloom.purpleFringing = values["purpleFringing"] ?? 0.2
+                }
 
             default:
                 break

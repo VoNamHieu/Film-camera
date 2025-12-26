@@ -87,7 +87,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 3: Bloom (single-pass simplified, radius capped at 8)
+        // PASS 3: CCD Bloom (Digicam vertical smear - alternative to standard bloom)
+        if preset.ccdBloom.enabled {
+            if let result = applyCCDBloom(input: currentInput, config: preset.ccdBloom, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("CCDBloom")
+            }
+        }
+
+        // PASS 4: Bloom (single-pass simplified, radius capped at 8)
         if preset.bloom.enabled {
             if let result = applyBloomSimplified(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -544,7 +554,17 @@ class FilterRenderer {
             }
         }
 
-        // PASS 4-7: Bloom (Separable - 4 passes) - FULL QUALITY
+        // PASS 4: CCD Bloom (Digicam vertical smear - alternative to standard bloom)
+        if preset.ccdBloom.enabled {
+            if let result = applyCCDBloom(input: currentInput, config: preset.ccdBloom, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("CCDBloom✓")
+            } else {
+                passResults.append("CCDBloom✗")
+            }
+        }
+
+        // PASS 5-8: Bloom (Separable - 4 passes) - FULL QUALITY
         if preset.bloom.enabled {
             if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -1196,6 +1216,51 @@ class FilterRenderer {
         case .topRight: return 2
         case .topLeft: return 3
         }
+    }
+
+    // MARK: - CCD Bloom Effect (Digicam Vertical Smear)
+
+    private func applyCCDBloom(input: MTLTexture, config: CCDBloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.ccdBloomPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.ccdBloomPipeline == nil {
+                print("❌ FilterRenderer: ccdBloomPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareCCDBloomParams(config, textureWidth: input.width, textureHeight: input.height)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<CCDBloomParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareCCDBloomParams(_ config: CCDBloomConfig, textureWidth: Int, textureHeight: Int) -> CCDBloomParams {
+        var params = CCDBloomParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.intensity = config.intensity
+        params.threshold = config.threshold
+        params.verticalSmear = config.verticalSmear
+        params.smearLength = config.smearLength
+        params.smearFalloff = config.smearFalloff
+        params.horizontalBloom = config.horizontalBloom
+        params.horizontalRadius = config.horizontalRadius
+        params.purpleFringing = config.purpleFringing
+        params.fringeWidth = config.fringeWidth
+        params.warmShift = config.warmShift
+        params.imageSize = SIMD2<Float>(Float(textureWidth), Float(textureHeight))
+        return params
     }
 }
 

@@ -220,4 +220,31 @@ typedef struct {
     float glowIntensity;    // Glow strength
 } DateStampParams;
 
+// ★★★ NEW: CCD BLOOM EFFECT (Digicam) ★★★
+// Simulates vertical smear and purple fringing of CCD sensors
+typedef struct {
+    int enabled;
+    float intensity;          // Overall intensity (0.0-1.0)
+    float threshold;          // Brightness threshold (0.5-1.0)
+
+    // Vertical Smear (CCD charge leak)
+    float verticalSmear;      // Vertical smear intensity (0.0-1.0)
+    float smearLength;        // Smear length (normalized 0.0-1.0)
+    float smearFalloff;       // Falloff curve (1.0=linear, 2.0=quadratic)
+
+    // Horizontal Bloom
+    float horizontalBloom;    // Horizontal bloom intensity (0.0-0.5)
+    float horizontalRadius;   // Horizontal blur radius (0.0-1.0)
+
+    // Purple Fringing
+    float purpleFringing;     // Purple fringe intensity (0.0-0.5)
+    float fringeWidth;        // Fringe width (normalized)
+
+    // Color
+    float warmShift;          // Warm color shift in bloom (0.0-0.3)
+
+    // Image dimensions
+    vector_float2 imageSize;  // Width, Height for pixel calculations
+} CCDBloomParams;
+
 #endif /* ShaderTypes_h */

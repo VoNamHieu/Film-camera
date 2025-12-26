@@ -1284,3 +1284,148 @@ fragment float4 dateStampFragment(
 
     return float4(saturate(color.rgb), color.a);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: CCD BLOOM EFFECT SHADER (Digicam) ★★★
+// Simulates vertical smear and purple fringing characteristic of
+// early 2000s digital cameras with CCD sensors (Sony Cybershot, etc.)
+// ═══════════════════════════════════════════════════════════════
+
+fragment float4 ccdBloomFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant CCDBloomParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.texCoord;
+
+    float4 color = inputTexture.sample(s, uv);
+
+    if (p.enabled == 0) return color;
+
+    float2 pixelSize = 1.0 / p.imageSize;
+    float3 result = color.rgb;
+
+    // Calculate luminance for threshold
+    float luma = luminance(color.rgb);
+    float bloomMask = smoothstep(p.threshold, p.threshold + 0.1, luma);
+
+    // === VERTICAL SMEAR (CCD Charge Leak) ===
+    // CCD sensors have vertical charge transfer, causing bright areas to smear vertically
+    if (p.verticalSmear > 0.0 && bloomMask > 0.0) {
+        float3 smear = float3(0.0);
+        float smearWeight = 0.0;
+
+        // Sample above and below (asymmetric - more downward like real CCD)
+        int samples = int(p.smearLength * 40.0); // Convert normalized to sample count
+        samples = clamp(samples, 4, 30); // Limit for performance
+
+        for (int i = -samples / 4; i <= samples; i++) {
+            float offset = float(i) * pixelSize.y * 3.0;
+            float2 sampleUV = uv + float2(0.0, offset);
+
+            // Clamp to valid range
+            sampleUV = clamp(sampleUV, 0.0, 1.0);
+
+            float4 sampleColor = inputTexture.sample(s, sampleUV);
+            float sampleLuma = luminance(sampleColor.rgb);
+
+            // Only include bright pixels in smear
+            if (sampleLuma > p.threshold) {
+                float dist = abs(float(i)) / float(samples);
+                float weight = pow(1.0 - dist, p.smearFalloff);
+
+                // More weight for samples below (charge flows down)
+                if (i > 0) weight *= 1.2;
+
+                smear += sampleColor.rgb * weight;
+                smearWeight += weight;
+            }
+        }
+
+        if (smearWeight > 0.0) {
+            smear /= smearWeight;
+            // Add smear with intensity control
+            result += smear * p.verticalSmear * p.intensity * 0.5;
+        }
+    }
+
+    // === HORIZONTAL BLOOM ===
+    // Slight horizontal spread creating star-like artifacts
+    if (p.horizontalBloom > 0.0 && bloomMask > 0.0) {
+        float3 hBloom = float3(0.0);
+        float hWeight = 0.0;
+
+        int hSamples = int(p.horizontalRadius * 30.0);
+        hSamples = clamp(hSamples, 2, 15);
+
+        for (int i = -hSamples; i <= hSamples; i++) {
+            float offset = float(i) * pixelSize.x * 3.0;
+            float2 sampleUV = uv + float2(offset, 0.0);
+            sampleUV = clamp(sampleUV, 0.0, 1.0);
+
+            float4 sampleColor = inputTexture.sample(s, sampleUV);
+            float sampleLuma = luminance(sampleColor.rgb);
+
+            if (sampleLuma > p.threshold) {
+                float dist = abs(float(i)) / float(hSamples);
+                float weight = 1.0 - dist * dist; // Quadratic falloff
+
+                hBloom += sampleColor.rgb * weight;
+                hWeight += weight;
+            }
+        }
+
+        if (hWeight > 0.0) {
+            hBloom /= hWeight;
+            result += hBloom * p.horizontalBloom * p.intensity * 0.3;
+        }
+    }
+
+    // === PURPLE FRINGING ===
+    // High contrast edges get purple/magenta fringing
+    if (p.purpleFringing > 0.0) {
+        // Edge detection using luminance gradient
+        float lumaL = luminance(inputTexture.sample(s, uv - float2(pixelSize.x, 0)).rgb);
+        float lumaR = luminance(inputTexture.sample(s, uv + float2(pixelSize.x, 0)).rgb);
+        float lumaU = luminance(inputTexture.sample(s, uv - float2(0, pixelSize.y)).rgb);
+        float lumaD = luminance(inputTexture.sample(s, uv + float2(0, pixelSize.y)).rgb);
+
+        float edgeH = abs(lumaL - lumaR);
+        float edgeV = abs(lumaU - lumaD);
+        float edge = sqrt(edgeH * edgeH + edgeV * edgeV);
+
+        // Purple fringe appears at high-contrast bright edges
+        float fringeMask = smoothstep(0.1, 0.3, edge) * smoothstep(0.5, 0.8, luma);
+
+        if (fringeMask > 0.0) {
+            // Purple/magenta fringe color
+            float3 fringeColor = float3(0.6, 0.2, 0.8);
+
+            // Chromatic aberration - shift red/blue channels
+            float caOffset = p.fringeWidth * 5.0;
+            float rShift = inputTexture.sample(s, uv + float2(caOffset * pixelSize.x, 0)).r;
+            float bShift = inputTexture.sample(s, uv - float2(caOffset * pixelSize.x, 0)).b;
+
+            // Add fringe color
+            result += fringeColor * fringeMask * p.purpleFringing * 0.3;
+
+            // Apply chromatic aberration
+            result.r = mix(result.r, rShift, fringeMask * p.purpleFringing * 0.2);
+            result.b = mix(result.b, bShift, fringeMask * p.purpleFringing * 0.2);
+        }
+    }
+
+    // === WARM SHIFT IN BLOOM AREAS ===
+    if (p.warmShift > 0.0) {
+        float bloomAmount = max(0.0, luminance(result) - luminance(color.rgb));
+        result.r += bloomAmount * p.warmShift * 0.15;
+        result.b -= bloomAmount * p.warmShift * 0.08;
+    }
+
+    // Soft highlight compression to prevent harsh clipping
+    result = result / (result + 0.8);
+    result = result * 1.8;
+
+    return float4(saturate(result), color.a);
+}
