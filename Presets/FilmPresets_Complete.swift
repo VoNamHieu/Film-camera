@@ -743,6 +743,7 @@ struct FilmPresets {
         grain: GrainConfig(enabled: true, globalIntensity: 0.12),
         bloom: BloomConfig(enabled: true, intensity: 0.08, threshold: 0.70, radius: 15, softness: 0.80),
         vignette: VignetteConfig(enabled: true, intensity: 0.15, roundness: 0.70, feather: 0.60),
+        dateStamp: DateStampConfig(enabled: true, format: .full, position: .bottomRight, color: .orange, opacity: 0.9, scale: 0.9),
         vhsEffects: VHSEffectsConfig(
             enabled: true,
             scanlines: ScanlineConfig(enabled: true, intensity: 0.12, density: 1.2, flickerIntensity: 0.08),
@@ -753,7 +754,6 @@ struct FilmPresets {
             sharpnessLoss: 0.15,
             dateOverlay: true
         ),
-        dateStamp: DateStampConfig(enabled: true, format: .full, position: .bottomRight, color: .orange, opacity: 0.9, scale: 0.9),
         filmStock: FilmStock(manufacturer: "Sony", name: "Handycam", type: "VHS-C",
             characteristics: ["Home video look", "Soft focus", "Color bleeding", "90s camcorder aesthetic"]))
 
@@ -769,6 +769,7 @@ struct FilmPresets {
         grain: GrainConfig(enabled: true, globalIntensity: 0.18),
         bloom: BloomConfig(enabled: true, intensity: 0.06, threshold: 0.72, radius: 12),
         vignette: VignetteConfig(enabled: true, intensity: 0.20, roundness: 0.65, feather: 0.55),
+        overlays: OverlaysConfig(enabled: true, dust: DustConfig(enabled: true, density: 0.15, opacity: 0.25), scratches: ScratchesConfig(enabled: true, density: 0.10, opacity: 0.20)),
         vhsEffects: VHSEffectsConfig(
             enabled: true,
             scanlines: ScanlineConfig(enabled: true, intensity: 0.20, density: 1.0, flickerSpeed: 0.4, flickerIntensity: 0.15),
@@ -779,7 +780,6 @@ struct FilmPresets {
             sharpnessLoss: 0.30,
             dateOverlay: false
         ),
-        overlays: OverlaysConfig(enabled: true, dust: DustConfig(enabled: true, density: 0.15, opacity: 0.25), scratches: ScratchesConfig(enabled: true, density: 0.10, opacity: 0.20)),
         filmStock: FilmStock(manufacturer: "Generic", name: "VHS Tape", type: "VHS Playback",
             characteristics: ["Worn tape look", "Tracking artifacts", "Color degradation", "80s/90s nostalgia"]))
 
@@ -861,6 +861,7 @@ struct FilmPresets {
         grain: GrainConfig(enabled: false),
         bloom: BloomConfig(enabled: true, intensity: 0.08, threshold: 0.72, radius: 12, softness: 0.75),
         vignette: VignetteConfig(enabled: true, intensity: 0.12, roundness: 0.80, feather: 0.65),
+        dateStamp: DateStampConfig(enabled: true, format: .full, position: .bottomRight, color: .red, opacity: 0.85, scale: 0.8, glowEnabled: false),
         ccdBloom: CCDBloomConfig(
             enabled: true,
             intensity: 0.35,
@@ -882,7 +883,6 @@ struct FilmPresets {
             sharpening: 0.45,
             timestamp: true
         ),
-        dateStamp: DateStampConfig(enabled: true, format: .full, position: .bottomRight, color: .red, opacity: 0.85, scale: 0.8, glowEnabled: false),
         filmStock: FilmStock(manufacturer: "Canon", name: "IXY Digital", type: "CCD Digicam", speed: 400, year: 2003,
             characteristics: ["CCD sensor look", "Punchy colors", "Purple fringing", "Early 2000s aesthetic"]))
 
@@ -898,6 +898,7 @@ struct FilmPresets {
         grain: GrainConfig(enabled: false),
         bloom: BloomConfig(enabled: true, intensity: 0.10, threshold: 0.68, radius: 14, softness: 0.78),
         vignette: VignetteConfig(enabled: true, intensity: 0.10, roundness: 0.85, feather: 0.70),
+        dateStamp: DateStampConfig(enabled: true, format: .japanese, position: .bottomRight, color: .orange, opacity: 0.85, scale: 0.85, glowEnabled: true, glowIntensity: 0.4),
         ccdBloom: CCDBloomConfig(
             enabled: true,
             intensity: 0.45,
@@ -919,7 +920,6 @@ struct FilmPresets {
             sharpening: 0.35,
             timestamp: true
         ),
-        dateStamp: DateStampConfig(enabled: true, format: .japanese, position: .bottomRight, color: .orange, opacity: 0.85, scale: 0.85, glowEnabled: true, glowIntensity: 0.4),
         filmStock: FilmStock(manufacturer: "Sony", name: "Cybershot DSC", type: "CCD Digicam", speed: 400, year: 2004,
             characteristics: ["Heavy CCD bloom", "Vertical smear", "Purple fringing", "Sony color science"]))
 
