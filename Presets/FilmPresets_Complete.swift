@@ -672,19 +672,284 @@ struct FilmPresets {
         vignette: VignetteConfig(enabled: true, intensity: 0.12),
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Classic Negative", type: "Film Simulation",
             characteristics: ["High contrast", "Desaturated", "Nostalgic look"]))
-    
+
+    // MARK: - NEW CREATIVE PRESETS
+
+    static let butter = FilterPreset(
+        id: "BUTTER",
+        label: "Butter · Creamy Warm",
+        category: .creative,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.08, contrast: -0.05, highlights: -0.08, shadows: 0.15,
+            saturation: -0.12, vibrance: 0.05, temperature: 0.15, tint: 0.02, fade: 0.08
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 40, shadowsSat: 0.12, highlightsHue: 50, highlightsSat: 0.15, balance: 0.4, midtoneProtection: 0.35),
+        grain: GrainConfig(enabled: true, globalIntensity: 0.08),
+        bloom: BloomConfig(enabled: true, intensity: 0.12, threshold: 0.65, radius: 18, softness: 0.88, colorTint: ColorTint(r: 1.08, g: 1.02, b: 0.92)),
+        vignette: VignetteConfig(enabled: true, intensity: 0.10, roundness: 0.85, feather: 0.75),
+        filmStock: FilmStock(manufacturer: "Digital", name: "Butter", type: "Creative Filter",
+            characteristics: ["Creamy warm tones", "Soft fade", "Dreamy aesthetic", "Golden hour vibes"]))
+
+    static let sakura = FilterPreset(
+        id: "SAKURA",
+        label: "Sakura · Cherry Blossom",
+        category: .creative,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.10, contrast: -0.08, highlights: 0.05, shadows: 0.12,
+            saturation: 0.05, vibrance: 0.10, temperature: -0.02, tint: 0.08, fade: 0.05
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 280, shadowsSat: 0.08, highlightsHue: 340, highlightsSat: 0.12, balance: 0.45, midtoneProtection: 0.40),
+        selectiveColor: [
+            SelectiveColorAdjustment(hue: 330, range: 40, sat: 0.15),  // Pink boost
+            SelectiveColorAdjustment(hue: 120, range: 50, sat: -0.20)  // Muted greens
+        ],
+        grain: GrainConfig(enabled: true, globalIntensity: 0.05),
+        bloom: BloomConfig(enabled: true, intensity: 0.15, threshold: 0.60, radius: 20, softness: 0.92, colorTint: ColorTint(r: 1.02, g: 0.98, b: 1.02)),
+        vignette: VignetteConfig(enabled: true, intensity: 0.08, roundness: 0.90, feather: 0.80),
+        filmStock: FilmStock(manufacturer: "Digital", name: "Sakura", type: "Creative Filter",
+            characteristics: ["Soft pink tones", "Cherry blossom aesthetic", "Spring vibes", "Japanese influence"]))
+
+    static let goldenHour = FilterPreset(
+        id: "GOLDEN_HOUR",
+        label: "Golden Hour · Sunset Glow",
+        category: .creative,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.05, contrast: 0.05, highlights: -0.12, shadows: 0.10,
+            saturation: 0.12, vibrance: 0.15, temperature: 0.20, tint: 0.03, fade: 0.03
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 25, shadowsSat: 0.15, highlightsHue: 40, highlightsSat: 0.20, balance: 0.35, midtoneProtection: 0.30),
+        selectiveColor: [
+            SelectiveColorAdjustment(hue: 35, range: 40, sat: 0.18, lum: 0.05),
+            SelectiveColorAdjustment(hue: 15, range: 30, sat: 0.12),
+            SelectiveColorAdjustment(hue: 200, range: 50, sat: -0.15)
+        ],
+        grain: GrainConfig(enabled: true, globalIntensity: 0.06),
+        bloom: BloomConfig(enabled: true, intensity: 0.18, threshold: 0.58, radius: 22, softness: 0.90, colorTint: ColorTint(r: 1.10, g: 0.98, b: 0.88)),
+        vignette: VignetteConfig(enabled: true, intensity: 0.12, roundness: 0.80, feather: 0.70),
+        filmStock: FilmStock(manufacturer: "Digital", name: "Golden Hour", type: "Creative Filter",
+            characteristics: ["Rich golden warmth", "Sunset glow", "Magic hour aesthetic", "Romantic atmosphere"]))
+
+    // MARK: - VHS PRESETS
+
+    static let vhsCamcorder = FilterPreset(
+        id: "VHS_CAMCORDER",
+        label: "VHS Camcorder · Home Video",
+        category: .vhs,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.03, contrast: 0.08, highlights: 0.05, shadows: -0.05,
+            saturation: -0.10, vibrance: -0.05, temperature: 0.02, clarity: -0.15
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 200, shadowsSat: 0.08, highlightsHue: 40, highlightsSat: 0.05),
+        grain: GrainConfig(enabled: true, globalIntensity: 0.12),
+        bloom: BloomConfig(enabled: true, intensity: 0.08, threshold: 0.70, radius: 15, softness: 0.80),
+        vignette: VignetteConfig(enabled: true, intensity: 0.15, roundness: 0.70, feather: 0.60),
+        vhsEffects: VHSEffectsConfig(
+            enabled: true,
+            scanlines: ScanlineConfig(enabled: true, intensity: 0.12, density: 1.2, flickerIntensity: 0.08),
+            colorBleed: ColorBleedConfig(enabled: true, intensity: 0.25, redShift: 0.004, blueShift: 0.003),
+            tracking: TrackingConfig(enabled: false),
+            noiseIntensity: 0.10,
+            saturationLoss: 0.08,
+            sharpnessLoss: 0.15,
+            dateOverlay: true
+        ),
+        dateStamp: DateStampConfig(enabled: true, format: .full, position: .bottomRight, color: .orange, opacity: 0.9, scale: 0.9),
+        filmStock: FilmStock(manufacturer: "Sony", name: "Handycam", type: "VHS-C",
+            characteristics: ["Home video look", "Soft focus", "Color bleeding", "90s camcorder aesthetic"]))
+
+    static let vhsPlayback = FilterPreset(
+        id: "VHS_PLAYBACK",
+        label: "VHS Playback · Worn Tape",
+        category: .vhs,
+        colorAdjustments: ColorAdjustments(
+            exposure: -0.02, contrast: 0.12, highlights: 0.08, shadows: -0.08,
+            saturation: -0.18, vibrance: -0.10, temperature: -0.03, clarity: -0.20
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 190, shadowsSat: 0.12, highlightsHue: 35, highlightsSat: 0.08),
+        grain: GrainConfig(enabled: true, globalIntensity: 0.18),
+        bloom: BloomConfig(enabled: true, intensity: 0.06, threshold: 0.72, radius: 12),
+        vignette: VignetteConfig(enabled: true, intensity: 0.20, roundness: 0.65, feather: 0.55),
+        vhsEffects: VHSEffectsConfig(
+            enabled: true,
+            scanlines: ScanlineConfig(enabled: true, intensity: 0.20, density: 1.0, flickerSpeed: 0.4, flickerIntensity: 0.15),
+            colorBleed: ColorBleedConfig(enabled: true, intensity: 0.45, redShift: 0.008, blueShift: 0.006, verticalBleed: 0.35),
+            tracking: TrackingConfig(enabled: true, intensity: 0.18, speed: 0.6, noise: 0.35, waveHeight: 0.025),
+            noiseIntensity: 0.22,
+            saturationLoss: 0.18,
+            sharpnessLoss: 0.30,
+            dateOverlay: false
+        ),
+        overlays: OverlaysConfig(enabled: true, dust: DustConfig(enabled: true, density: 0.15, opacity: 0.25), scratches: ScratchesConfig(enabled: true, density: 0.10, opacity: 0.20)),
+        filmStock: FilmStock(manufacturer: "Generic", name: "VHS Tape", type: "VHS Playback",
+            characteristics: ["Worn tape look", "Tracking artifacts", "Color degradation", "80s/90s nostalgia"]))
+
+    // MARK: - FILM STRIP PRESET
+
+    static let film35mm = FilterPreset(
+        id: "FILM_35MM",
+        label: "35mm Film Strip · Kodak Style",
+        category: .creative,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.02, contrast: 0.06, highlights: -0.05, shadows: 0.08,
+            saturation: 0.05, vibrance: 0.08, temperature: 0.05, fade: 0.04
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 30, shadowsSat: 0.10, highlightsHue: 45, highlightsSat: 0.08),
+        grain: GrainConfig(
+            enabled: true, globalIntensity: 0.18,
+            channels: GrainChannels(
+                red: GrainChannel(intensity: 0.16, size: 1.10, seed: 35001, softness: 0.55),
+                green: GrainChannel(intensity: 0.18, size: 1.12, seed: 35002, softness: 0.52),
+                blue: GrainChannel(intensity: 0.22, size: 1.18, seed: 35003, softness: 0.48)),
+            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.58, lacunarity: 1.75, baseFrequency: 1.05)),
+        bloom: BloomConfig(enabled: true, intensity: 0.05, threshold: 0.78, radius: 10, softness: 0.72, colorTint: ColorTint(r: 1.02, g: 0.98, b: 0.92)),
+        vignette: VignetteConfig(enabled: true, intensity: 0.10, roundness: 0.75, feather: 0.60),
+        filmStripEffects: FilmStripEffectsConfig(
+            enabled: true,
+            perforations: .standard35mm,
+            borderColor: ColorTint(r: 0.12, g: 0.08, b: 0.04),
+            borderOpacity: 0.95,
+            frameLineWidth: 0.003,
+            frameLineOpacity: 0.8,
+            rebateVisible: true,
+            rebateText: "KODAK 400TX",
+            frameNumber: true,
+            kodakStyle: true
+        ),
+        filmStock: FilmStock(manufacturer: "Kodak", name: "35mm Film Strip", type: "Negative Scan",
+            characteristics: ["Film border visible", "Sprocket holes", "Kodak rebate", "Authentic scan look"]))
+
+    static let triXOrange = FilterPreset(
+        id: "TRI_X_ORANGE",
+        label: "Tri-X · Orange Filter",
+        category: .blackAndWhite,
+        colorAdjustments: ColorAdjustments(contrast: 0.12, highlights: -0.05, shadows: -0.08),
+        grain: GrainConfig(
+            enabled: true, globalIntensity: 0.28,
+            channels: GrainChannels(
+                red: GrainChannel(intensity: 0.28, size: 1.22, seed: 36001, softness: 0.45),
+                green: GrainChannel(intensity: 0.28, size: 1.22, seed: 36002, softness: 0.45),
+                blue: GrainChannel(intensity: 0.28, size: 1.22, seed: 36003, softness: 0.45)),
+            texture: GrainTexture(type: "perlin", octaves: 3, persistence: 0.65, lacunarity: 1.8, baseFrequency: 1.3)),
+        bloom: BloomConfig(enabled: true, intensity: 0.05, threshold: 0.78, radius: 8, softness: 0.70, colorTint: ColorTint(r: 1.0, g: 1.0, b: 1.0)),
+        vignette: VignetteConfig(enabled: true, intensity: 0.18, roundness: 0.80, feather: 0.55),
+        bw: BWConfig(
+            enabled: true,
+            redWeight: 0.50,      // Orange filter boosts reds
+            greenWeight: 0.40,
+            blueWeight: 0.10,
+            contrast: 0.18,
+            brightness: 0.0,
+            gamma: 0.95,
+            toning: .none,
+            grainIntensity: 0.25,
+            grainSize: 1.2
+        ),
+        filmStock: FilmStock(manufacturer: "Kodak", name: "Tri-X 400 Orange", type: "Black & White Negative",
+            characteristics: ["Orange filter effect", "Dramatic skies", "High contrast", "Classic B&W portrait"]))
+
+    // MARK: - DIGICAM PRESETS
+
+    static let canonIXY = FilterPreset(
+        id: "CANON_IXY",
+        label: "Canon IXY · 2000s Digicam",
+        category: .digicam,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.05, contrast: 0.10, highlights: 0.08, shadows: -0.05,
+            saturation: 0.12, vibrance: 0.08, temperature: 0.02, clarity: 0.15
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 220, shadowsSat: 0.05, highlightsHue: 45, highlightsSat: 0.04),
+        grain: GrainConfig(enabled: false),
+        bloom: BloomConfig(enabled: true, intensity: 0.08, threshold: 0.72, radius: 12, softness: 0.75),
+        vignette: VignetteConfig(enabled: true, intensity: 0.12, roundness: 0.80, feather: 0.65),
+        ccdBloom: CCDBloomConfig(
+            enabled: true,
+            intensity: 0.35,
+            threshold: 0.70,
+            verticalSmear: 0.20,
+            smearLength: 0.12,
+            smearFalloff: 1.6,
+            horizontalBloom: 0.12,
+            horizontalRadius: 0.04,
+            purpleFringing: 0.15,
+            fringeWidth: 0.008,
+            warmShift: 0.08
+        ),
+        digicamEffects: DigicamEffectsConfig(
+            enabled: true,
+            digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.12, luminanceNoise: 0.10, chrominanceNoise: 0.08, banding: 0.04),
+            jpegArtifacts: 0.08,
+            whiteBalance: 0.03,
+            sharpening: 0.45,
+            timestamp: true
+        ),
+        dateStamp: DateStampConfig(enabled: true, format: .full, position: .bottomRight, color: .red, opacity: 0.85, scale: 0.8, glowEnabled: false),
+        filmStock: FilmStock(manufacturer: "Canon", name: "IXY Digital", type: "CCD Digicam", speed: 400, year: 2003,
+            characteristics: ["CCD sensor look", "Punchy colors", "Purple fringing", "Early 2000s aesthetic"]))
+
+    static let sonyCybershot = FilterPreset(
+        id: "SONY_CYBERSHOT",
+        label: "Sony Cybershot · DSC Style",
+        category: .digicam,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.03, contrast: 0.08, highlights: 0.10, shadows: -0.08,
+            saturation: 0.08, vibrance: 0.05, temperature: -0.03, clarity: 0.12
+        ),
+        splitTone: SplitToneConfig(shadowsHue: 200, shadowsSat: 0.06, highlightsHue: 40, highlightsSat: 0.05),
+        grain: GrainConfig(enabled: false),
+        bloom: BloomConfig(enabled: true, intensity: 0.10, threshold: 0.68, radius: 14, softness: 0.78),
+        vignette: VignetteConfig(enabled: true, intensity: 0.10, roundness: 0.85, feather: 0.70),
+        ccdBloom: CCDBloomConfig(
+            enabled: true,
+            intensity: 0.45,
+            threshold: 0.65,
+            verticalSmear: 0.30,
+            smearLength: 0.18,
+            smearFalloff: 1.4,
+            horizontalBloom: 0.18,
+            horizontalRadius: 0.05,
+            purpleFringing: 0.22,
+            fringeWidth: 0.010,
+            warmShift: 0.10
+        ),
+        digicamEffects: DigicamEffectsConfig(
+            enabled: true,
+            digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.18, luminanceNoise: 0.15, chrominanceNoise: 0.12, banding: 0.06, hotPixels: 0.015),
+            jpegArtifacts: 0.12,
+            whiteBalance: -0.05,
+            sharpening: 0.35,
+            timestamp: true
+        ),
+        dateStamp: DateStampConfig(enabled: true, format: .japanese, position: .bottomRight, color: .orange, opacity: 0.85, scale: 0.85, glowEnabled: true, glowIntensity: 0.4),
+        filmStock: FilmStock(manufacturer: "Sony", name: "Cybershot DSC", type: "CCD Digicam", speed: 400, year: 2004,
+            characteristics: ["Heavy CCD bloom", "Vertical smear", "Purple fringing", "Sony color science"]))
+
     // MARK: - ALL PRESETS
     
     static let allPresets: [FilterPreset] = [
+        // Professional
         kodakPortra400, kodakPortra160, fujiPro400H,
+        // Consumer
         kodakUltramax400, kodakGold200, kodakColorPlus200, fujiSuperia400,
+        // Slide
         fujiVelvia100, fujiProvia100F, fujiAstia100F,
-        fujiEterna500T, kodakTriX400,
+        // Cinema
+        fujiEterna500T,
+        // Black & White
+        kodakTriX400, triXOrange,
+        // Instant
         polaroid600, instaxMini, polaroidSX70,
+        // Disposable
         kodakFunSaver, fujiQuickSnap,
+        // Food
         cafeMood, freshClean, goldenFood,
+        // Night
         cineStill800T, cyberpunk,
-        nostalgicNeg, classicNegative
+        // Creative
+        nostalgicNeg, classicNegative, butter, sakura, goldenHour, film35mm,
+        // VHS
+        vhsCamcorder, vhsPlayback,
+        // Digicam
+        canonIXY, sonyCybershot
     ]
     
     static func presets(for category: FilterCategory) -> [FilterPreset] {
@@ -719,6 +984,8 @@ class PresetManager {
         case .food: return "Food & Lifestyle"
         case .night: return "Night & Neon"
         case .creative: return "Creative"
+        case .vhs: return "VHS & Retro Video"
+        case .digicam: return "Digital Camera (Y2K)"
         }
     }
 }

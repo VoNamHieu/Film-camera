@@ -309,4 +309,84 @@ typedef struct {
     float aspectRatio;        // For correct scaling
 } OverlaysParams;
 
+// ★★★ NEW: VHS EFFECTS ★★★
+// Simulates VHS tape playback artifacts
+typedef struct {
+    int enabled;
+
+    // Scanlines
+    int scanlinesEnabled;
+    float scanlinesIntensity;     // Line visibility (0.0-1.0)
+    float scanlinesDensity;       // Lines per screen (0.5-2.0)
+    float scanlinesFlickerSpeed;  // Flicker rate (0.0-1.0)
+    float scanlinesFlickerIntensity; // Flicker amount (0.0-1.0)
+
+    // Color Bleed
+    int colorBleedEnabled;
+    float colorBleedIntensity;    // Overall bleed amount (0.0-1.0)
+    float colorBleedRedShift;     // Red channel offset (0.0-0.02)
+    float colorBleedBlueShift;    // Blue channel offset (0.0-0.02)
+    float colorBleedVertical;     // Vertical smearing (0.0-1.0)
+
+    // Tracking
+    int trackingEnabled;
+    float trackingIntensity;      // Distortion strength (0.0-1.0)
+    float trackingSpeed;          // Roll speed (0.0-2.0)
+    float trackingNoise;          // Random jitter (0.0-1.0)
+    float trackingWaveHeight;     // Wave distortion height (0.0-0.1)
+
+    // Global effects
+    float noiseIntensity;         // Static noise (0.0-1.0)
+    float saturationLoss;         // Color fade (0.0-0.5)
+    float sharpnessLoss;          // Softening (0.0-1.0)
+    float time;                   // Animation time
+} VHSEffectsParams;
+
+// ★★★ NEW: DIGICAM EFFECTS ★★★
+// Simulates digital camera artifacts
+typedef struct {
+    int enabled;
+
+    // Digital noise
+    int digitalNoiseEnabled;
+    float digitalNoiseIntensity;  // Overall noise (0.0-1.0)
+    float luminanceNoise;         // Brightness noise (0.0-1.0)
+    float chrominanceNoise;       // Color noise (0.0-1.0)
+    float banding;                // Horizontal banding (0.0-1.0)
+    float hotPixels;              // Random bright pixels (0.0-0.1)
+
+    // JPEG artifacts
+    float jpegArtifacts;          // JPEG compression (0.0-1.0)
+
+    // Camera processing
+    float whiteBalance;           // WB shift (-1.0 to 1.0)
+    float autoExposure;           // Over/under exposure (-0.5 to 0.5)
+    float sharpening;             // Digital sharpening (0.0-1.0)
+
+    // Global
+    unsigned int seed;            // Random seed
+} DigicamEffectsParams;
+
+// ★★★ NEW: FILM STRIP EFFECTS ★★★
+// Adds film strip borders, perforations, and rebate
+typedef struct {
+    int enabled;
+
+    // Perforations
+    int perforationStyle;         // 0=none, 1=35mm, 2=cinema, 3=super8
+
+    // Border
+    vector_float3 borderColor;    // Border color RGB
+    float borderOpacity;          // Border visibility (0.0-1.0)
+
+    // Frame lines
+    float frameLineWidth;         // Line thickness (0.0-0.02)
+    float frameLineOpacity;       // Line visibility (0.0-1.0)
+
+    // Rebate
+    int rebateVisible;            // Show rebate text
+    int frameNumber;              // Show frame numbers
+    int kodakStyle;               // Orange Kodak rebate style
+} FilmStripParams;
+
 #endif /* ShaderTypes_h */

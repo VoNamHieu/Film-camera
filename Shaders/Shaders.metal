@@ -1789,3 +1789,363 @@ fragment float4 overlaysFragment(
 
     return float4(saturate(result), color.a);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: VHS EFFECTS SHADER ★★★
+// Simulates VHS tape playback artifacts including scanlines,
+// color bleeding, tracking distortion, and analog noise
+// ═══════════════════════════════════════════════════════════════
+
+// VHS noise pattern
+inline float vhsNoise(float2 uv, float time, uint seed) {
+    float2 p = uv * 100.0 + float2(time * 50.0, 0.0);
+    float3 p3 = fract(float3(p.xyx) * 0.1031 + float(seed) * 0.01);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z) * 2.0 - 1.0;
+}
+
+// Scanline pattern
+inline float scanlinePattern(float y, float density, float intensity) {
+    float line = sin(y * 3.14159 * 2.0 * density * 480.0);
+    return 1.0 - (0.5 - line * 0.5) * intensity;
+}
+
+fragment float4 vhsEffectsFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant VHSEffectsParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.texCoord;
+
+    if (p.enabled == 0) {
+        return inputTexture.sample(s, uv);
+    }
+
+    float2 texSize = float2(inputTexture.get_width(), inputTexture.get_height());
+    float2 pixelSize = 1.0 / texSize;
+
+    // === TRACKING DISTORTION ===
+    float2 distortedUV = uv;
+    if (p.trackingEnabled != 0 && p.trackingIntensity > 0.0) {
+        // Horizontal wave distortion
+        float wave = sin(uv.y * 20.0 + p.time * p.trackingSpeed * 5.0) * p.trackingWaveHeight;
+        wave += vhsNoise(float2(uv.y * 10.0, p.time), p.time, 1u) * p.trackingNoise * 0.02;
+
+        // Apply tracking distortion
+        distortedUV.x += wave * p.trackingIntensity;
+
+        // Occasional glitch lines
+        float glitchLine = step(0.98, vhsNoise(float2(p.time * 10.0, uv.y * 5.0), p.time, 2u));
+        distortedUV.x += glitchLine * 0.05 * p.trackingIntensity;
+    }
+
+    // Clamp UV
+    distortedUV = clamp(distortedUV, 0.0, 1.0);
+
+    // === COLOR BLEED / CHROMATIC SEPARATION ===
+    float3 result;
+    if (p.colorBleedEnabled != 0 && p.colorBleedIntensity > 0.0) {
+        // Sample channels with horizontal offset (simulates analog bandwidth limitations)
+        float redOffset = p.colorBleedRedShift * p.colorBleedIntensity * 10.0;
+        float blueOffset = p.colorBleedBlueShift * p.colorBleedIntensity * 10.0;
+
+        // Also add vertical bleed
+        float verticalOffset = p.colorBleedVertical * p.colorBleedIntensity * 0.01;
+
+        float r = inputTexture.sample(s, distortedUV + float2(redOffset * pixelSize.x, 0.0)).r;
+        float g = inputTexture.sample(s, distortedUV).g;
+        float b = inputTexture.sample(s, distortedUV - float2(blueOffset * pixelSize.x, verticalOffset)).b;
+
+        result = float3(r, g, b);
+    } else {
+        result = inputTexture.sample(s, distortedUV).rgb;
+    }
+
+    // === SATURATION LOSS ===
+    if (p.saturationLoss > 0.0) {
+        float luma = dot(result, float3(0.299, 0.587, 0.114));
+        result = mix(result, float3(luma), p.saturationLoss);
+    }
+
+    // === SHARPNESS LOSS (BLUR) ===
+    if (p.sharpnessLoss > 0.0) {
+        float3 blurred = result;
+        float blur = p.sharpnessLoss * 2.0;
+
+        // Simple box blur
+        blurred += inputTexture.sample(s, distortedUV + float2(blur, 0.0) * pixelSize).rgb;
+        blurred += inputTexture.sample(s, distortedUV - float2(blur, 0.0) * pixelSize).rgb;
+        blurred += inputTexture.sample(s, distortedUV + float2(0.0, blur) * pixelSize).rgb;
+        blurred += inputTexture.sample(s, distortedUV - float2(0.0, blur) * pixelSize).rgb;
+        blurred /= 5.0;
+
+        result = mix(result, blurred, p.sharpnessLoss * 0.5);
+    }
+
+    // === SCANLINES ===
+    if (p.scanlinesEnabled != 0 && p.scanlinesIntensity > 0.0) {
+        float scanline = scanlinePattern(uv.y, p.scanlinesDensity, p.scanlinesIntensity);
+
+        // Add flicker
+        float flicker = 1.0 + sin(p.time * p.scanlinesFlickerSpeed * 30.0) * p.scanlinesFlickerIntensity * 0.1;
+        scanline *= flicker;
+
+        result *= scanline;
+    }
+
+    // === NOISE ===
+    if (p.noiseIntensity > 0.0) {
+        float noise = vhsNoise(uv, p.time, 3u);
+
+        // Add some color to the noise (VHS noise is slightly colored)
+        float3 coloredNoise = float3(noise);
+        coloredNoise.r += vhsNoise(uv + 0.1, p.time, 4u) * 0.1;
+        coloredNoise.b += vhsNoise(uv + 0.2, p.time, 5u) * 0.1;
+
+        result += coloredNoise * p.noiseIntensity * 0.1;
+    }
+
+    return float4(saturate(result), 1.0);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: DIGICAM EFFECTS SHADER ★★★
+// Simulates digital camera artifacts including digital noise,
+// JPEG compression, sharpening, and banding
+// ═══════════════════════════════════════════════════════════════
+
+// Digital noise pattern (more structured than film grain)
+inline float digitalNoise(float2 uv, uint seed) {
+    float2 grid = floor(uv * 500.0);
+    float n = fract(sin(dot(grid + float(seed) * 0.1, float2(12.9898, 78.233))) * 43758.5453);
+    return n * 2.0 - 1.0;
+}
+
+// JPEG block pattern
+inline float jpegBlockPattern(float2 uv, float blockSize) {
+    float2 block = floor(uv * blockSize) / blockSize;
+    float2 localUV = fract(uv * blockSize);
+    float edge = max(step(0.95, localUV.x), step(0.95, localUV.y));
+    return edge;
+}
+
+fragment float4 digicamEffectsFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant DigicamEffectsParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.texCoord;
+
+    if (p.enabled == 0) {
+        return inputTexture.sample(s, uv);
+    }
+
+    float2 texSize = float2(inputTexture.get_width(), inputTexture.get_height());
+    float2 pixelSize = 1.0 / texSize;
+
+    float3 result = inputTexture.sample(s, uv).rgb;
+
+    // === WHITE BALANCE SHIFT ===
+    if (abs(p.whiteBalance) > 0.001) {
+        // Positive = warmer, Negative = cooler
+        result.r += p.whiteBalance * 0.05;
+        result.b -= p.whiteBalance * 0.05;
+    }
+
+    // === AUTO EXPOSURE SIMULATION ===
+    if (abs(p.autoExposure) > 0.001) {
+        result = result * (1.0 + p.autoExposure * 0.5);
+    }
+
+    // === DIGITAL NOISE ===
+    if (p.digitalNoiseEnabled != 0 && p.digitalNoiseIntensity > 0.0) {
+        // Luminance noise
+        float lNoise = digitalNoise(uv, p.seed);
+        result += lNoise * p.luminanceNoise * 0.05;
+
+        // Chrominance noise (colored)
+        float cNoiseR = digitalNoise(uv + 0.1, p.seed + 1u);
+        float cNoiseB = digitalNoise(uv + 0.2, p.seed + 2u);
+        result.r += cNoiseR * p.chrominanceNoise * 0.03;
+        result.b += cNoiseB * p.chrominanceNoise * 0.03;
+
+        // Banding (horizontal lines)
+        if (p.banding > 0.0) {
+            float band = sin(uv.y * texSize.y * 0.5) * p.banding * 0.02;
+            result += band;
+        }
+
+        // Hot pixels
+        if (p.hotPixels > 0.0) {
+            float hotPixel = step(0.999 - p.hotPixels * 0.01, digitalNoise(uv * 50.0, p.seed + 10u));
+            result = mix(result, float3(1.0, 0.8, 0.8), hotPixel * 0.8);
+        }
+    }
+
+    // === JPEG COMPRESSION ARTIFACTS ===
+    if (p.jpegArtifacts > 0.0) {
+        // 8x8 block quantization simulation
+        float blockSize = 8.0 / min(texSize.x, texSize.y) * 100.0;
+        float2 blockUV = floor(uv / blockSize) * blockSize;
+
+        // Sample block average
+        float3 blockColor = inputTexture.sample(s, blockUV + blockSize * 0.5).rgb;
+
+        // Blend toward block color (quantization)
+        result = mix(result, blockColor, p.jpegArtifacts * 0.3);
+
+        // Add block edge ringing
+        float edge = jpegBlockPattern(uv, 1.0 / blockSize);
+        result -= edge * p.jpegArtifacts * 0.05;
+    }
+
+    // === DIGITAL SHARPENING ===
+    if (p.sharpening > 0.0) {
+        // Unsharp mask
+        float3 blurred = inputTexture.sample(s, uv + pixelSize * 1.5).rgb;
+        blurred += inputTexture.sample(s, uv - pixelSize * 1.5).rgb;
+        blurred += inputTexture.sample(s, uv + float2(1.5, -1.5) * pixelSize).rgb;
+        blurred += inputTexture.sample(s, uv + float2(-1.5, 1.5) * pixelSize).rgb;
+        blurred *= 0.25;
+
+        float3 sharpened = result + (result - blurred) * p.sharpening;
+        result = sharpened;
+
+        // Add slight halos on edges (over-sharpening artifact)
+        float3 diff = abs(result - blurred);
+        float edgeMask = dot(diff, float3(0.33));
+        result += edgeMask * p.sharpening * 0.2;
+    }
+
+    return float4(saturate(result), 1.0);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: FILM STRIP EFFECTS SHADER ★★★
+// Adds film strip borders, perforations, rebate text, and frame lines
+// ═══════════════════════════════════════════════════════════════
+
+// Rounded rectangle distance function
+inline float roundedRect(float2 uv, float2 center, float2 size, float radius) {
+    float2 d = abs(uv - center) - size + radius;
+    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - radius;
+}
+
+// Perforation (sprocket hole)
+inline float perforation(float2 uv, float2 center, float2 size) {
+    float dist = roundedRect(uv, center, size, size.x * 0.3);
+    return 1.0 - smoothstep(0.0, 0.002, dist);
+}
+
+fragment float4 filmStripFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant FilmStripParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.texCoord;
+
+    if (p.enabled == 0) {
+        return inputTexture.sample(s, uv);
+    }
+
+    float4 photo = inputTexture.sample(s, uv);
+    float3 result = photo.rgb;
+
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+
+    // Film strip border dimensions
+    float borderWidth = 0.08;  // Total border width
+    float perfAreaWidth = 0.05; // Width for perforations
+
+    // Check if in photo area
+    bool inPhotoArea = uv.x > perfAreaWidth && uv.x < (1.0 - perfAreaWidth) &&
+                       uv.y > 0.02 && uv.y < 0.98;
+
+    if (inPhotoArea) {
+        // Inside photo - show the image
+        // Scale and offset UV to fit within borders
+        float2 photoUV;
+        photoUV.x = (uv.x - perfAreaWidth) / (1.0 - 2.0 * perfAreaWidth);
+        photoUV.y = (uv.y - 0.02) / 0.96;
+
+        // Clamp to valid range
+        photoUV = clamp(photoUV, 0.0, 1.0);
+        result = inputTexture.sample(s, photoUV).rgb;
+
+        // Add frame lines
+        if (p.frameLineOpacity > 0.0) {
+            float frameLine = 0.0;
+            float lineW = p.frameLineWidth;
+
+            // Top and bottom frame lines
+            if (uv.y < 0.02 + lineW || uv.y > 0.98 - lineW) {
+                frameLine = 1.0;
+            }
+            // Left and right frame lines
+            if (uv.x < perfAreaWidth + lineW || uv.x > 1.0 - perfAreaWidth - lineW) {
+                frameLine = 1.0;
+            }
+
+            result = mix(result, float3(0.0), frameLine * p.frameLineOpacity);
+        }
+    } else {
+        // Outside photo area - show film border/rebate
+        float3 borderColor = p.borderColor;
+
+        // Kodak orange rebate style
+        if (p.kodakStyle != 0) {
+            borderColor = float3(0.9, 0.4, 0.1);
+        }
+
+        result = borderColor * p.borderOpacity;
+
+        // === PERFORATIONS ===
+        if (p.perforationStyle > 0) {
+            float perfSpacing = 0.1;  // Spacing between perforations
+            float perfHeight = 0.025;
+            float perfWidth = 0.015;
+
+            // Left side perforations
+            if (uv.x < perfAreaWidth * 0.7) {
+                float y = fmod(uv.y + 0.05, perfSpacing);
+                float perfY = perfSpacing * 0.5;
+
+                float2 perfCenter = float2(perfAreaWidth * 0.35, perfY);
+                float2 perfSize = float2(perfWidth, perfHeight);
+
+                float perf = perforation(float2(uv.x, y), perfCenter, perfSize);
+                if (perf > 0.5) {
+                    result = float3(0.02); // Dark hole
+                }
+            }
+
+            // Right side perforations
+            if (uv.x > 1.0 - perfAreaWidth * 0.7) {
+                float y = fmod(uv.y + 0.05, perfSpacing);
+                float perfY = perfSpacing * 0.5;
+
+                float2 perfCenter = float2(1.0 - perfAreaWidth * 0.35, perfY);
+                float2 perfSize = float2(perfWidth, perfHeight);
+
+                float perf = perforation(float2(uv.x, y), perfCenter, perfSize);
+                if (perf > 0.5) {
+                    result = float3(0.02); // Dark hole
+                }
+            }
+        }
+
+        // === FRAME NUMBERS ===
+        // Simple frame number indicator (just a rectangle for now)
+        if (p.frameNumber != 0) {
+            if (uv.x > 1.0 - perfAreaWidth + 0.01 && uv.x < 1.0 - 0.01 &&
+                uv.y > 0.15 && uv.y < 0.20) {
+                result = float3(0.8, 0.6, 0.2); // Frame number area
+            }
+        }
+    }
+
+    return float4(result, 1.0);
+}

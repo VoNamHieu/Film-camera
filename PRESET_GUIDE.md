@@ -68,12 +68,14 @@ enum FilterCategory: String, CaseIterable, Codable, Equatable {
     case slide          // Velvia, Provia
     case consumer       // Ultramax, Gold, Superia
     case cinema         // Eterna, CineStill
-    case blackAndWhite  // Tri-X
+    case blackAndWhite  // Tri-X, Tri-X Orange
     case instant        // Polaroid, Instax
     case disposable     // FunSaver, QuickSnap
     case food           // Cafe, Fresh, Golden
     case night          // CineStill 800T, Cyberpunk
-    case creative       // Nostalgic Neg, Classic Neg
+    case creative       // Nostalgic Neg, Classic Neg, Butter, Sakura, Golden Hour, Film 35mm
+    case vhs            // VHS Camcorder, VHS Playback
+    case digicam        // Canon IXY, Sony Cybershot
 }
 ```
 
@@ -275,7 +277,7 @@ vignette: intensity: 0.15-0.25
 □ 7. Build và test
 ```
 
-## 🎨 Presets Hiện Có (24 presets)
+## 🎨 Presets Hiện Có (33 presets)
 
 | Category | Presets |
 |----------|---------|
@@ -283,9 +285,55 @@ vignette: intensity: 0.15-0.25
 | Consumer | Ultramax 400, Gold 200, ColorPlus, Superia |
 | Slide | Velvia 100, Provia 100F, Astia 100F |
 | Cinema | Eterna 500T |
-| B&W | Tri-X 400 |
+| B&W | Tri-X 400, Tri-X Orange |
 | Instant | Polaroid 600, Instax Mini, SX-70 |
 | Disposable | FunSaver, QuickSnap |
 | Food | Cafe Mood, Fresh Clean, Golden Food |
 | Night | CineStill 800T, Cyberpunk |
-| Creative | Nostalgic Neg, Classic Negative |
+| Creative | Nostalgic Neg, Classic Neg, Butter, Sakura, Golden Hour, Film 35mm |
+| VHS | VHS Camcorder, VHS Playback |
+| Digicam | Canon IXY, Sony Cybershot |
+
+## 🆕 New Effect Configs
+
+### VHSEffectsConfig
+```swift
+vhsEffects: VHSEffectsConfig(
+    enabled: true,
+    scanlines: ScanlineConfig(enabled: true, intensity: 0.15, density: 1.0),
+    colorBleed: ColorBleedConfig(enabled: true, intensity: 0.3, redShift: 0.005, blueShift: 0.003),
+    tracking: TrackingConfig(enabled: false),  // Enable for worn tape look
+    noiseIntensity: 0.15,
+    saturationLoss: 0.1,
+    sharpnessLoss: 0.2,
+    dateOverlay: true
+)
+```
+
+### DigicamEffectsConfig
+```swift
+digicamEffects: DigicamEffectsConfig(
+    enabled: true,
+    digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.15, luminanceNoise: 0.12, chrominanceNoise: 0.10),
+    jpegArtifacts: 0.1,
+    whiteBalance: 0.05,
+    sharpening: 0.4,
+    timestamp: true
+)
+```
+
+### FilmStripEffectsConfig
+```swift
+filmStripEffects: FilmStripEffectsConfig(
+    enabled: true,
+    perforations: .standard35mm,  // .none, .standard35mm, .cinema, .super8
+    borderColor: ColorTint(r: 0.12, g: 0.08, b: 0.04),
+    borderOpacity: 0.95,
+    frameLineWidth: 0.003,
+    frameLineOpacity: 0.8,
+    rebateVisible: true,
+    rebateText: "KODAK 400TX",
+    frameNumber: true,
+    kodakStyle: true  // Orange Kodak rebate
+)
+```
