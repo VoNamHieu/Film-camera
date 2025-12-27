@@ -809,6 +809,76 @@ fragment float4 toneMappingFragment(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: FLASH EFFECT SHADER (Disposable Camera) ★★★
+// Simulates on-camera flash with realistic inverse-square falloff
+// and warm tungsten tint characteristic of cheap flash units
+// ═══════════════════════════════════════════════════════════════
+
+fragment float4 flashFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant FlashParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    // Convert to linear space for physically accurate light addition
+    float3 rgb = srgbToLinear3(color.rgb);
+
+    // Calculate distance from flash position (aspect-ratio corrected)
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+    float2 uv = in.texCoord;
+    float2 flashPos = p.position;
+
+    // Correct for aspect ratio to make circular falloff
+    float2 delta = uv - flashPos;
+    delta.x *= aspect;
+    float dist = length(delta);
+
+    // Normalize distance by radius
+    float normalizedDist = dist / p.radius;
+
+    // Inverse-square-like falloff (modified for artistic control)
+    // Using pow() for controllable falloff rate
+    float falloffFactor = 1.0 / pow(1.0 + normalizedDist * normalizedDist, p.falloff * 0.5);
+
+    // Apply center boost (hotspot effect)
+    float centerFalloff = exp(-normalizedDist * normalizedDist * 4.0);
+    falloffFactor += centerFalloff * p.centerBoost;
+
+    // Calculate flash contribution
+    float flashStrength = falloffFactor * p.intensity;
+
+    // Warm tint (simulates tungsten flash)
+    // Cheap flash units typically have a warm color temperature
+    float3 warmTint = float3(1.0 + p.warmth, 1.0, 1.0 - p.warmth * 0.5);
+
+    // Flash light addition (additive blending in linear space)
+    float3 flashLight = float3(flashStrength) * warmTint;
+
+    // Shadow lift in flash area (simulates fill light)
+    // Only affects darker areas, proportional to flash strength
+    float luma = luminance(rgb);
+    float shadowMask = 1.0 - smoothstep(0.0, 0.4, luma);
+    float shadowLiftAmount = shadowMask * p.shadowLift * flashStrength;
+
+    // Apply flash
+    rgb = rgb + flashLight + float3(shadowLiftAmount);
+
+    // Soft highlight compression to prevent harsh clipping
+    // Maintains detail in bright areas while allowing natural bloom
+    rgb = rgb / (rgb + 0.5);  // Simple Reinhard-style compression
+    rgb = rgb * 1.5;           // Compensate for compression
+
+    // Convert back to sRGB
+    rgb = linearToSrgb3(saturate(rgb));
+
+    return float4(rgb, color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ★★★ NEW: SKIN TONE PROTECTION SHADER ★★★
 // ═══════════════════════════════════════════════════════════════
 
@@ -843,13 +913,855 @@ fragment float4 skinToneProtectionFragment(
         // Protect saturation (don't over-saturate skin)
         float satProtection = mix(1.0, 0.85, p.satProtection * skinMask);
         hsl.y *= satProtection;
-        
+
         // Add slight warmth boost
         hsl.x += p.warmthBoost * skinMask * 0.02;
         if (hsl.x > 1.0) hsl.x -= 1.0;
-        
+
         rgb = hsl2rgb(hsl);
     }
-    
+
     return float4(rgb, color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: LIGHT LEAK EFFECT SHADER (Procedural) ★★★
+// Simulates light leaking through camera body seals
+// Creates organic, colored light areas typical of old/disposable cameras
+// ═══════════════════════════════════════════════════════════════
+
+// Blend mode functions for light leak
+inline float3 blendScreen(float3 base, float3 blend) {
+    return 1.0 - (1.0 - base) * (1.0 - blend);
+}
+
+inline float3 blendAdd(float3 base, float3 blend) {
+    return min(base + blend, 1.0);
+}
+
+inline float3 blendOverlay(float3 base, float3 blend) {
+    float3 result;
+    result.r = base.r < 0.5 ? (2.0 * base.r * blend.r) : (1.0 - 2.0 * (1.0 - base.r) * (1.0 - blend.r));
+    result.g = base.g < 0.5 ? (2.0 * base.g * blend.g) : (1.0 - 2.0 * (1.0 - base.g) * (1.0 - blend.g));
+    result.b = base.b < 0.5 ? (2.0 * base.b * blend.b) : (1.0 - 2.0 * (1.0 - base.b) * (1.0 - blend.b));
+    return result;
+}
+
+inline float3 blendSoftLight(float3 base, float3 blend) {
+    float3 result;
+    for (int i = 0; i < 3; i++) {
+        if (blend[i] < 0.5) {
+            result[i] = base[i] - (1.0 - 2.0 * blend[i]) * base[i] * (1.0 - base[i]);
+        } else {
+            float d = (base[i] < 0.25)
+                ? ((16.0 * base[i] - 12.0) * base[i] + 4.0) * base[i]
+                : sqrt(base[i]);
+            result[i] = base[i] + (2.0 * blend[i] - 1.0) * (d - base[i]);
+        }
+    }
+    return result;
+}
+
+// Simple hash function for procedural randomness
+inline float hash(float2 p, uint seed) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031 + float(seed) * 0.001);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// Smooth noise for organic shapes
+inline float noise(float2 uv, uint seed) {
+    float2 i = floor(uv);
+    float2 f = fract(uv);
+    f = f * f * (3.0 - 2.0 * f); // Smooth interpolation
+
+    float a = hash(i, seed);
+    float b = hash(i + float2(1.0, 0.0), seed);
+    float c = hash(i + float2(0.0, 1.0), seed);
+    float d = hash(i + float2(1.0, 1.0), seed);
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+fragment float4 lightLeakFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant LightLeakParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    float2 uv = in.texCoord;
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+
+    // Determine leak center based on type
+    // Types: 0-3 corners, 4-7 edges, 8 streak, 9 random
+    float2 leakCenter;
+    float leakAngle = 0.0;
+    uint effectiveSeed = p.seed;
+
+    // For random type, use seed to pick random position
+    if (p.leakType == 9) { // random
+        effectiveSeed = (p.seed == 0) ? uint(uv.x * 1000.0 + uv.y * 1000.0) : p.seed;
+        float randX = hash(float2(float(effectiveSeed), 0.0), effectiveSeed);
+        float randY = hash(float2(0.0, float(effectiveSeed)), effectiveSeed);
+        leakCenter = float2(randX, randY);
+        leakAngle = hash(float2(float(effectiveSeed), float(effectiveSeed)), effectiveSeed) * 6.28318;
+    } else {
+        switch (p.leakType) {
+            case 0: leakCenter = float2(0.0, 0.0); leakAngle = 0.785; break;  // cornerTopLeft
+            case 1: leakCenter = float2(1.0, 0.0); leakAngle = 2.356; break;  // cornerTopRight
+            case 2: leakCenter = float2(0.0, 1.0); leakAngle = -0.785; break; // cornerBottomLeft
+            case 3: leakCenter = float2(1.0, 1.0); leakAngle = -2.356; break; // cornerBottomRight
+            case 4: leakCenter = float2(0.5, 0.0); leakAngle = 1.571; break;  // edgeTop
+            case 5: leakCenter = float2(0.5, 1.0); leakAngle = -1.571; break; // edgeBottom
+            case 6: leakCenter = float2(0.0, 0.5); leakAngle = 0.0; break;    // edgeLeft
+            case 7: leakCenter = float2(1.0, 0.5); leakAngle = 3.14159; break;// edgeRight
+            case 8: leakCenter = float2(0.0, 0.0); leakAngle = 0.785; break;  // streak (diagonal)
+            default: leakCenter = float2(1.0, 0.0); leakAngle = 2.356; break;
+        }
+    }
+
+    // Calculate distance from leak center (aspect corrected)
+    float2 delta = uv - leakCenter;
+    delta.x *= aspect;
+
+    // For streak type, use distance to line instead of point
+    float dist;
+    if (p.leakType == 8) { // streak
+        // Distance to diagonal line
+        float2 dir = float2(cos(leakAngle), sin(leakAngle));
+        dist = abs(dot(delta, float2(-dir.y, dir.x)));
+        dist *= 0.5; // Make streak wider
+    } else {
+        dist = length(delta);
+    }
+
+    // Calculate leak intensity with soft falloff
+    float normalizedDist = dist / (p.size + 0.001);
+    float leakIntensity = 1.0 - smoothstep(0.0, 1.0 / p.softness, normalizedDist);
+
+    // Add organic noise variation
+    float noiseVal = noise(uv * 8.0 + float2(leakAngle), effectiveSeed);
+    leakIntensity *= mix(0.7, 1.0, noiseVal);
+
+    // Apply opacity
+    leakIntensity *= p.opacity;
+
+    if (leakIntensity <= 0.0) return color;
+
+    // Generate leak color based on warmth and hue shift
+    // Base orange/red for warm, cyan/blue for cool
+    float3 leakColor;
+    float hue = p.hueShift;
+
+    if (p.warmth >= 0.0) {
+        // Warm: orange to red range (hue 0.0 - 0.1)
+        hue = fract(hue + p.warmth * 0.1);
+        leakColor = hsl2rgb(float3(hue, p.saturation, 0.6));
+    } else {
+        // Cool: cyan to magenta range (hue 0.5 - 0.9)
+        hue = fract(hue + 0.5 - p.warmth * 0.2);
+        leakColor = hsl2rgb(float3(hue, p.saturation * 0.9, 0.55));
+    }
+
+    // Add variation to leak color
+    float colorNoise = noise(uv * 4.0, effectiveSeed + 1);
+    leakColor = mix(leakColor, leakColor * 1.3, colorNoise * 0.3);
+
+    // Apply blend mode
+    float3 blended;
+    switch (p.blendMode) {
+        case 0: blended = blendScreen(color.rgb, leakColor); break;
+        case 1: blended = blendAdd(color.rgb, leakColor); break;
+        case 2: blended = blendOverlay(color.rgb, leakColor); break;
+        case 3: blended = blendSoftLight(color.rgb, leakColor); break;
+        default: blended = blendScreen(color.rgb, leakColor); break;
+    }
+
+    // Mix based on leak intensity
+    float3 result = mix(color.rgb, blended, leakIntensity);
+
+    return float4(saturate(result), color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: DATE STAMP EFFECT SHADER (Procedural 7-Segment) ★★★
+// Renders date stamp directly without textures using 7-segment display
+// ═══════════════════════════════════════════════════════════════
+
+// 7-segment display encoding for digits 0-9
+// Segments: A(top), B(topRight), C(bottomRight), D(bottom), E(bottomLeft), F(topLeft), G(middle)
+//     AAA
+//    F   B
+//     GGG
+//    E   C
+//     DDD
+constant int SEGMENT_PATTERNS[13] = {
+    0b1111110,  // 0: ABCDEF
+    0b0110000,  // 1: BC
+    0b1101101,  // 2: ABDEG
+    0b1111001,  // 3: ABCDG
+    0b0110011,  // 4: BCFG
+    0b1011011,  // 5: ACDFG
+    0b1011111,  // 6: ACDEFG
+    0b1110000,  // 7: ABC
+    0b1111111,  // 8: ABCDEFG
+    0b1111011,  // 9: ABCDFG
+    0b0000000,  // 10: quote (') - rendered separately
+    0b0000001,  // 11: slash (/) - rendered as diagonal
+    0b0000000   // 12: dot (.) - rendered separately
+};
+
+// Segment dimensions (relative to digit cell)
+constant float SEGMENT_WIDTH = 0.15;
+constant float SEGMENT_LENGTH = 0.35;
+constant float DIGIT_SPACING = 0.18;
+
+// Check if point is inside a horizontal segment
+inline float horizontalSegment(float2 p, float2 center, float length, float width) {
+    float2 d = abs(p - center);
+    float box = max(d.x - length * 0.5, d.y - width * 0.5);
+    return 1.0 - smoothstep(0.0, 0.02, box);
+}
+
+// Check if point is inside a vertical segment
+inline float verticalSegment(float2 p, float2 center, float length, float width) {
+    float2 d = abs(p - center);
+    float box = max(d.x - width * 0.5, d.y - length * 0.5);
+    return 1.0 - smoothstep(0.0, 0.02, box);
+}
+
+// Render a single 7-segment digit
+inline float renderDigit(float2 uv, int digit) {
+    if (digit < 0 || digit > 12) return 0.0;
+
+    float result = 0.0;
+    int pattern = SEGMENT_PATTERNS[digit];
+
+    // Special characters
+    if (digit == 10) { // quote (')
+        float2 quotePos = float2(0.3, 0.15);
+        result = verticalSegment(uv, quotePos, 0.12, 0.08);
+        return result;
+    }
+    if (digit == 11) { // slash (/)
+        float2 d = uv - float2(0.5, 0.5);
+        float dist = abs(d.x * 0.8 + d.y * 0.6);
+        result = 1.0 - smoothstep(0.0, 0.06, dist);
+        // Clip to bounds
+        result *= step(0.1, uv.x) * step(uv.x, 0.9);
+        result *= step(0.1, uv.y) * step(uv.y, 0.9);
+        return result;
+    }
+    if (digit == 12) { // dot (.)
+        float2 dotPos = float2(0.5, 0.85);
+        float dist = length(uv - dotPos);
+        result = 1.0 - smoothstep(0.0, 0.08, dist);
+        return result;
+    }
+
+    // 7-segment display
+    float w = SEGMENT_WIDTH;
+    float l = SEGMENT_LENGTH;
+
+    // A - top horizontal
+    if (pattern & 0b1000000) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.12), l, w));
+    }
+    // B - top right vertical
+    if (pattern & 0b0100000) {
+        result = max(result, verticalSegment(uv, float2(0.75, 0.3), l, w));
+    }
+    // C - bottom right vertical
+    if (pattern & 0b0010000) {
+        result = max(result, verticalSegment(uv, float2(0.75, 0.7), l, w));
+    }
+    // D - bottom horizontal
+    if (pattern & 0b0001000) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.88), l, w));
+    }
+    // E - bottom left vertical
+    if (pattern & 0b0000100) {
+        result = max(result, verticalSegment(uv, float2(0.25, 0.7), l, w));
+    }
+    // F - top left vertical
+    if (pattern & 0b0000010) {
+        result = max(result, verticalSegment(uv, float2(0.25, 0.3), l, w));
+    }
+    // G - middle horizontal
+    if (pattern & 0b0000001) {
+        result = max(result, horizontalSegment(uv, float2(0.5, 0.5), l, w));
+    }
+
+    return result;
+}
+
+fragment float4 dateStampFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant DateStampParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0 || p.digitCount == 0) return color;
+
+    float2 uv = in.texCoord;
+    float aspect = float(inputTexture.get_width()) / float(inputTexture.get_height());
+
+    // Calculate stamp dimensions
+    float digitHeight = 0.05 * p.scale;
+    float digitWidth = digitHeight * 0.6;
+    float totalWidth = float(p.digitCount) * (digitWidth + DIGIT_SPACING * digitHeight) - DIGIT_SPACING * digitHeight;
+
+    // Calculate stamp position based on config
+    float2 stampOrigin;
+    switch (p.position) {
+        case 0: // bottomRight
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, 1.0 - p.marginY - digitHeight);
+            break;
+        case 1: // bottomLeft
+            stampOrigin = float2(p.marginX, 1.0 - p.marginY - digitHeight);
+            break;
+        case 2: // topRight
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, p.marginY);
+            break;
+        case 3: // topLeft
+            stampOrigin = float2(p.marginX, p.marginY);
+            break;
+        default:
+            stampOrigin = float2(1.0 - p.marginX - totalWidth, 1.0 - p.marginY - digitHeight);
+    }
+
+    // Check if current pixel is in stamp area
+    float2 stampUV = (uv - stampOrigin);
+    if (stampUV.x < 0.0 || stampUV.y < 0.0 ||
+        stampUV.x > totalWidth || stampUV.y > digitHeight) {
+        return color;
+    }
+
+    // Determine which digit we're in
+    float stampAlpha = 0.0;
+    float digitCellWidth = digitWidth + DIGIT_SPACING * digitHeight;
+
+    for (int i = 0; i < p.digitCount && i < 10; i++) {
+        float digitStart = float(i) * digitCellWidth;
+        float digitEnd = digitStart + digitWidth;
+
+        if (stampUV.x >= digitStart && stampUV.x < digitEnd) {
+            // Normalize UV within this digit cell
+            float2 digitUV;
+            digitUV.x = (stampUV.x - digitStart) / digitWidth;
+            digitUV.y = stampUV.y / digitHeight;
+
+            stampAlpha = renderDigit(digitUV, p.digits[i]);
+            break;
+        }
+    }
+
+    if (stampAlpha <= 0.0) return color;
+
+    // Apply glow effect
+    float glowAlpha = stampAlpha;
+    if (p.glowEnabled != 0) {
+        glowAlpha = stampAlpha + stampAlpha * p.glowIntensity * 0.5;
+    }
+
+    // Blend stamp with image
+    float finalAlpha = glowAlpha * p.opacity;
+    float3 stampColor = p.color;
+
+    // Add subtle glow (additive blend for LED effect)
+    if (p.glowEnabled != 0 && stampAlpha > 0.5) {
+        color.rgb += stampColor * stampAlpha * p.glowIntensity * 0.3;
+    }
+
+    // Main stamp (alpha blend)
+    color.rgb = mix(color.rgb, stampColor, finalAlpha);
+
+    return float4(saturate(color.rgb), color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★★★ NEW: CCD BLOOM EFFECT SHADER (Digicam) ★★★
+// Simulates vertical smear and purple fringing characteristic of
+// early 2000s digital cameras with CCD sensors (Sony Cybershot, etc.)
+// ═══════════════════════════════════════════════════════════════
+
+fragment float4 ccdBloomFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant CCDBloomParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.texCoord;
+
+    float4 color = inputTexture.sample(s, uv);
+
+    if (p.enabled == 0) return color;
+
+    float2 pixelSize = 1.0 / p.imageSize;
+    float3 result = color.rgb;
+
+    // Calculate luminance for threshold
+    float luma = luminance(color.rgb);
+    float bloomMask = smoothstep(p.threshold, p.threshold + 0.1, luma);
+
+    // === VERTICAL SMEAR (CCD Charge Leak) ===
+    // CCD sensors have vertical charge transfer, causing bright areas to smear vertically
+    if (p.verticalSmear > 0.0 && bloomMask > 0.0) {
+        float3 smear = float3(0.0);
+        float smearWeight = 0.0;
+
+        // Sample above and below (asymmetric - more downward like real CCD)
+        int samples = int(p.smearLength * 40.0); // Convert normalized to sample count
+        samples = clamp(samples, 4, 30); // Limit for performance
+
+        for (int i = -samples / 4; i <= samples; i++) {
+            float offset = float(i) * pixelSize.y * 3.0;
+            float2 sampleUV = uv + float2(0.0, offset);
+
+            // Clamp to valid range
+            sampleUV = clamp(sampleUV, 0.0, 1.0);
+
+            float4 sampleColor = inputTexture.sample(s, sampleUV);
+            float sampleLuma = luminance(sampleColor.rgb);
+
+            // Only include bright pixels in smear
+            if (sampleLuma > p.threshold) {
+                float dist = abs(float(i)) / float(samples);
+                float weight = pow(1.0 - dist, p.smearFalloff);
+
+                // More weight for samples below (charge flows down)
+                if (i > 0) weight *= 1.2;
+
+                smear += sampleColor.rgb * weight;
+                smearWeight += weight;
+            }
+        }
+
+        if (smearWeight > 0.0) {
+            smear /= smearWeight;
+            // Add smear with intensity control
+            result += smear * p.verticalSmear * p.intensity * 0.5;
+        }
+    }
+
+    // === HORIZONTAL BLOOM ===
+    // Slight horizontal spread creating star-like artifacts
+    if (p.horizontalBloom > 0.0 && bloomMask > 0.0) {
+        float3 hBloom = float3(0.0);
+        float hWeight = 0.0;
+
+        int hSamples = int(p.horizontalRadius * 30.0);
+        hSamples = clamp(hSamples, 2, 15);
+
+        for (int i = -hSamples; i <= hSamples; i++) {
+            float offset = float(i) * pixelSize.x * 3.0;
+            float2 sampleUV = uv + float2(offset, 0.0);
+            sampleUV = clamp(sampleUV, 0.0, 1.0);
+
+            float4 sampleColor = inputTexture.sample(s, sampleUV);
+            float sampleLuma = luminance(sampleColor.rgb);
+
+            if (sampleLuma > p.threshold) {
+                float dist = abs(float(i)) / float(hSamples);
+                float weight = 1.0 - dist * dist; // Quadratic falloff
+
+                hBloom += sampleColor.rgb * weight;
+                hWeight += weight;
+            }
+        }
+
+        if (hWeight > 0.0) {
+            hBloom /= hWeight;
+            result += hBloom * p.horizontalBloom * p.intensity * 0.3;
+        }
+    }
+
+    // === PURPLE FRINGING ===
+    // High contrast edges get purple/magenta fringing
+    if (p.purpleFringing > 0.0) {
+        // Edge detection using luminance gradient
+        float lumaL = luminance(inputTexture.sample(s, uv - float2(pixelSize.x, 0)).rgb);
+        float lumaR = luminance(inputTexture.sample(s, uv + float2(pixelSize.x, 0)).rgb);
+        float lumaU = luminance(inputTexture.sample(s, uv - float2(0, pixelSize.y)).rgb);
+        float lumaD = luminance(inputTexture.sample(s, uv + float2(0, pixelSize.y)).rgb);
+
+        float edgeH = abs(lumaL - lumaR);
+        float edgeV = abs(lumaU - lumaD);
+        float edge = sqrt(edgeH * edgeH + edgeV * edgeV);
+
+        // Purple fringe appears at high-contrast bright edges
+        float fringeMask = smoothstep(0.1, 0.3, edge) * smoothstep(0.5, 0.8, luma);
+
+        if (fringeMask > 0.0) {
+            // Purple/magenta fringe color
+            float3 fringeColor = float3(0.6, 0.2, 0.8);
+
+            // Chromatic aberration - shift red/blue channels
+            float caOffset = p.fringeWidth * 5.0;
+            float rShift = inputTexture.sample(s, uv + float2(caOffset * pixelSize.x, 0)).r;
+            float bShift = inputTexture.sample(s, uv - float2(caOffset * pixelSize.x, 0)).b;
+
+            // Add fringe color
+            result += fringeColor * fringeMask * p.purpleFringing * 0.3;
+
+            // Apply chromatic aberration
+            result.r = mix(result.r, rShift, fringeMask * p.purpleFringing * 0.2);
+            result.b = mix(result.b, bShift, fringeMask * p.purpleFringing * 0.2);
+        }
+    }
+
+    // === WARM SHIFT IN BLOOM AREAS ===
+    if (p.warmShift > 0.0) {
+        float bloomAmount = max(0.0, luminance(result) - luminance(color.rgb));
+        result.r += bloomAmount * p.warmShift * 0.15;
+        result.b -= bloomAmount * p.warmShift * 0.08;
+    }
+
+    // Soft highlight compression to prevent harsh clipping
+    result = result / (result + 0.8);
+    result = result * 1.8;
+
+    return float4(saturate(result), color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BLACK & WHITE PIPELINE
+// Converts color image to B&W with channel mixing and toning
+// ═══════════════════════════════════════════════════════════════
+
+// Helper: HSV to RGB for toning
+float3 hsvToRgbBW(float h, float s, float v) {
+    float c = v * s;
+    float x = c * (1.0 - abs(fmod(h * 6.0, 2.0) - 1.0));
+    float m = v - c;
+
+    float3 rgb;
+    if (h < 1.0/6.0)      rgb = float3(c, x, 0);
+    else if (h < 2.0/6.0) rgb = float3(x, c, 0);
+    else if (h < 3.0/6.0) rgb = float3(0, c, x);
+    else if (h < 4.0/6.0) rgb = float3(0, x, c);
+    else if (h < 5.0/6.0) rgb = float3(x, 0, c);
+    else                  rgb = float3(c, 0, x);
+
+    return rgb + m;
+}
+
+// B&W Film grain generator
+float bwGrain(float2 uv, uint seed, float size) {
+    float2 scaled = uv * size * 500.0;
+    float n1 = fract(sin(dot(scaled + float(seed) * 0.1, float2(12.9898, 78.233))) * 43758.5453);
+    float n2 = fract(sin(dot(scaled + float(seed) * 0.2, float2(93.9898, 67.345))) * 24634.6345);
+    return (n1 + n2) * 0.5 - 0.5; // Centered around 0
+}
+
+fragment float4 bwConvertFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant BWParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.texCoord;
+
+    float4 color = inputTexture.sample(s, uv);
+
+    if (p.enabled == 0) return color;
+
+    // === CHANNEL MIXING ===
+    // Convert to grayscale with custom RGB weights
+    float luma = color.r * p.redWeight +
+                 color.g * p.greenWeight +
+                 color.b * p.blueWeight;
+
+    // Normalize if weights don't sum to 1
+    float weightSum = p.redWeight + p.greenWeight + p.blueWeight;
+    if (weightSum > 0.0) {
+        luma /= weightSum;
+    }
+
+    // === CONTRAST & BRIGHTNESS ===
+    // Apply brightness (shift)
+    luma += p.brightness;
+
+    // Apply contrast (around midpoint 0.5)
+    luma = (luma - 0.5) * (1.0 + p.contrast) + 0.5;
+
+    // Apply gamma curve
+    luma = clamp(luma, 0.0, 1.0);
+    luma = pow(luma, 1.0 / p.gamma);
+
+    // === TONING ===
+    float3 result = float3(luma);
+
+    if (p.toningMode > 0 && p.toningIntensity > 0.0) {
+        float3 toneColor = float3(1.0);
+
+        switch (p.toningMode) {
+            case 1: // Sepia - warm brown
+                toneColor = float3(1.0, 0.89, 0.71);
+                break;
+            case 2: // Selenium - cool blue-black
+                toneColor = float3(0.85, 0.88, 0.95);
+                break;
+            case 3: // Cyanotype - Prussian blue
+                toneColor = float3(0.22, 0.45, 0.65);
+                break;
+            case 4: // Split Tone
+            {
+                // Apply different colors to shadows and highlights
+                float shadowWeight = smoothstep(0.5 + p.splitBalance * 0.3, 0.2, luma);
+                float highlightWeight = smoothstep(0.5 - p.splitBalance * 0.3, 0.8, luma);
+
+                float3 shadowColor = hsvToRgbBW(p.shadowHue, p.shadowSat, 1.0);
+                float3 highlightColor = hsvToRgbBW(p.highlightHue, p.highlightSat, 1.0);
+
+                // Blend based on luminance
+                toneColor = mix(float3(1.0),
+                                mix(highlightColor, shadowColor, shadowWeight),
+                                max(shadowWeight, highlightWeight));
+                break;
+            }
+            case 5: // Custom color
+                toneColor = p.customColor;
+                break;
+        }
+
+        // Apply toning
+        if (p.toningMode == 4) {
+            // Split tone: colorize based on luminance zones
+            result = luma * toneColor;
+        } else {
+            // Standard toning: multiply gray with tone color
+            result = mix(float3(luma), luma * toneColor, p.toningIntensity);
+        }
+    }
+
+    // === B&W FILM GRAIN ===
+    if (p.grainIntensity > 0.0) {
+        float grain = bwGrain(uv, p.grainSeed, p.grainSize);
+
+        // Grain is more visible in midtones
+        float midtoneMask = 1.0 - abs(luma - 0.5) * 2.0;
+        midtoneMask = max(0.3, midtoneMask);
+
+        // Apply grain with intensity control
+        result += grain * p.grainIntensity * 0.15 * midtoneMask;
+    }
+
+    return float4(saturate(result), color.a);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OVERLAYS (Dust & Scratches)
+// Procedural dust particles and film scratches for vintage look
+// ═══════════════════════════════════════════════════════════════
+
+// Hash function for random distribution
+inline float overlayHash(float2 p, uint seed) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031 + float(seed) * 0.001);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// 2D noise for organic patterns
+inline float overlayNoise(float2 uv, uint seed) {
+    float2 i = floor(uv);
+    float2 f = fract(uv);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float a = overlayHash(i, seed);
+    float b = overlayHash(i + float2(1.0, 0.0), seed);
+    float c = overlayHash(i + float2(0.0, 1.0), seed);
+    float d = overlayHash(i + float2(1.0, 1.0), seed);
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Fractal noise for clumping
+inline float overlayFbm(float2 uv, uint seed) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 3; i++) {
+        value += amplitude * overlayNoise(uv, seed + uint(i));
+        uv *= 2.0;
+        amplitude *= 0.5;
+    }
+    return value;
+}
+
+// Generate dust particle at position
+inline float dustParticle(float2 uv, float2 center, float size, float variation, uint seed) {
+    float sizeVar = 1.0 + (overlayHash(center, seed + 100u) - 0.5) * variation;
+    float actualSize = size * sizeVar * 0.005;
+
+    float dist = length(uv - center);
+    float particle = 1.0 - smoothstep(0.0, actualSize, dist);
+
+    // Add slight irregularity to particle shape
+    float angle = atan2(uv.y - center.y, uv.x - center.x);
+    float wobble = 1.0 + 0.2 * sin(angle * 5.0 + overlayHash(center, seed + 200u) * 6.28);
+    particle *= wobble;
+
+    return saturate(particle);
+}
+
+// Generate scratch line
+inline float scratchLine(float2 uv, float2 start, float2 end, float width) {
+    float2 dir = end - start;
+    float len = length(dir);
+    if (len < 0.001) return 0.0;
+
+    dir /= len;
+    float2 toPoint = uv - start;
+
+    float along = dot(toPoint, dir);
+    if (along < 0.0 || along > len) return 0.0;
+
+    float perp = abs(dot(toPoint, float2(-dir.y, dir.x)));
+    float lineWidth = width * 0.001;
+
+    // Tapered ends
+    float taper = smoothstep(0.0, len * 0.1, along) * smoothstep(len, len * 0.9, along);
+
+    return (1.0 - smoothstep(0.0, lineWidth, perp)) * taper;
+}
+
+// Apply blend mode
+inline float3 applyOverlayBlend(float3 base, float3 overlay, int blendMode, float intensity) {
+    float3 result;
+
+    switch (blendMode) {
+        case 0: // multiply
+            result = base * overlay;
+            break;
+        case 1: // screen
+            result = 1.0 - (1.0 - base) * (1.0 - overlay);
+            break;
+        case 2: // overlay
+            // Element-wise overlay blend (can't use ternary with float3 comparison)
+            result.r = base.r < 0.5 ? (2.0 * base.r * overlay.r) : (1.0 - 2.0 * (1.0 - base.r) * (1.0 - overlay.r));
+            result.g = base.g < 0.5 ? (2.0 * base.g * overlay.g) : (1.0 - 2.0 * (1.0 - base.g) * (1.0 - overlay.g));
+            result.b = base.b < 0.5 ? (2.0 * base.b * overlay.b) : (1.0 - 2.0 * (1.0 - base.b) * (1.0 - overlay.b));
+            break;
+        case 3: // softLight
+            // Element-wise soft light blend
+            result.r = overlay.r < 0.5
+                ? base.r - (1.0 - 2.0 * overlay.r) * base.r * (1.0 - base.r)
+                : base.r + (2.0 * overlay.r - 1.0) * (sqrt(base.r) - base.r);
+            result.g = overlay.g < 0.5
+                ? base.g - (1.0 - 2.0 * overlay.g) * base.g * (1.0 - base.g)
+                : base.g + (2.0 * overlay.g - 1.0) * (sqrt(base.g) - base.g);
+            result.b = overlay.b < 0.5
+                ? base.b - (1.0 - 2.0 * overlay.b) * base.b * (1.0 - base.b)
+                : base.b + (2.0 * overlay.b - 1.0) * (sqrt(base.b) - base.b);
+            break;
+        default:
+            result = base * overlay;
+    }
+
+    return mix(base, result, intensity);
+}
+
+fragment float4 overlaysFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> inputTexture [[texture(0)]],
+    constant OverlaysParams &p [[buffer(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 color = inputTexture.sample(s, in.texCoord);
+
+    if (p.enabled == 0) return color;
+
+    float2 uv = in.texCoord;
+    float3 result = color.rgb;
+
+    // === DUST PARTICLES ===
+    if (p.dustEnabled != 0 && p.dustDensity > 0.0) {
+        float dustMask = 0.0;
+
+        // Grid-based particle placement with variation
+        float cellSize = 0.03 / (p.dustDensity + 0.1);
+        float2 cell = floor(uv / cellSize);
+
+        // Check neighboring cells for particles
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                float2 checkCell = cell + float2(dx, dy);
+                uint cellSeed = p.seed + uint(checkCell.x * 1000.0 + checkCell.y);
+
+                // Probability of particle in this cell
+                if (overlayHash(checkCell, cellSeed) < p.dustDensity * 0.8) {
+                    // Particle position within cell
+                    float2 particlePos = (checkCell + 0.5) * cellSize;
+                    particlePos += (float2(overlayHash(checkCell, cellSeed + 1u),
+                                          overlayHash(checkCell, cellSeed + 2u)) - 0.5) * cellSize * 0.8;
+
+                    // Apply clumping
+                    if (p.dustClumping > 0.0) {
+                        float clumpNoise = overlayFbm(uv * 10.0, p.seed);
+                        if (clumpNoise < p.dustClumping * 0.5) continue;
+                    }
+
+                    dustMask += dustParticle(uv, particlePos, p.dustSize, p.dustVariation, cellSeed);
+                }
+            }
+        }
+
+        dustMask = saturate(dustMask);
+
+        if (dustMask > 0.0) {
+            float3 dustColor = float3(0.1); // Dark dust
+            result = applyOverlayBlend(result, dustColor, p.dustBlendMode, dustMask * p.dustOpacity);
+        }
+    }
+
+    // === SCRATCHES ===
+    if (p.scratchEnabled != 0 && p.scratchDensity > 0.0) {
+        float scratchMask = 0.0;
+
+        // Generate multiple scratches
+        int numScratches = int(p.scratchDensity * 15.0) + 1;
+
+        for (int i = 0; i < numScratches && i < 20; i++) {
+            uint scratchSeed = p.seed + uint(i) * 7919u;
+
+            // Random scratch position
+            float startX = overlayHash(float2(float(i), 0.0), scratchSeed);
+            float startY = overlayHash(float2(0.0, float(i)), scratchSeed + 1u);
+
+            float2 start = float2(startX, startY);
+
+            // Scratch direction (mostly vertical if preferred)
+            float baseAngle = p.scratchVertical != 0 ? 1.5708 : overlayHash(float2(float(i), float(i)), scratchSeed + 2u) * 3.14159;
+            float angleVar = p.scratchAngle * (overlayHash(float2(float(i * 2), 0.0), scratchSeed + 3u) - 0.5) * 0.5;
+            float angle = baseAngle + angleVar;
+
+            // Scratch length
+            float len = p.scratchLength * (0.5 + overlayHash(float2(float(i), float(i) * 2.0), scratchSeed + 4u) * 0.5);
+
+            float2 dir = float2(cos(angle), sin(angle));
+            float2 end = start + dir * len;
+
+            // Correct for aspect ratio
+            start.x *= p.aspectRatio;
+            end.x *= p.aspectRatio;
+            float2 uvCorrected = float2(uv.x * p.aspectRatio, uv.y);
+
+            scratchMask += scratchLine(uvCorrected, start, end, p.scratchWidth);
+        }
+
+        scratchMask = saturate(scratchMask);
+
+        if (scratchMask > 0.0) {
+            float3 scratchColor = float3(0.9); // Light scratches
+            result = applyOverlayBlend(result, scratchColor, p.scratchBlendMode, scratchMask * p.scratchOpacity);
+        }
+    }
+
+    return float4(saturate(result), color.a);
 }

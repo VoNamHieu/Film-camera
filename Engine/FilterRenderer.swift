@@ -77,17 +77,37 @@ class FilterRenderer {
             failedPasses.append("ColorGrading")
         }
 
-        // PASS 2: Grain (lightweight)
-        if preset.grain.enabled {
-            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+        // PASS 1.5: Black & White Conversion (AFTER color grading for proper channel mixing)
+        if preset.bw.enabled {
+            if let result = applyBWConvert(input: currentInput, config: preset.bw, commandBuffer: commandBuffer) {
                 currentInput = result
                 passCount += 1
             } else {
-                failedPasses.append("Grain")
+                failedPasses.append("BWConvert")
             }
         }
 
-        // PASS 3: Bloom (single-pass simplified, radius capped at 8)
+        // PASS 2: Flash (BEFORE Bloom so flash areas glow)
+        if preset.flash.enabled {
+            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Flash")
+            }
+        }
+
+        // PASS 3: CCD Bloom (Digicam vertical smear - alternative to standard bloom)
+        if preset.ccdBloom.enabled {
+            if let result = applyCCDBloom(input: currentInput, config: preset.ccdBloom, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("CCDBloom")
+            }
+        }
+
+        // PASS 4: Bloom (single-pass simplified, radius capped at 8)
         if preset.bloom.enabled {
             if let result = applyBloomSimplified(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -107,7 +127,47 @@ class FilterRenderer {
             }
         }
 
-        // PASS 5: Instant Frame (for Polaroid/Instax look)
+        // PASS 5: Grain (AFTER lighting effects for natural appearance)
+        if preset.grain.enabled {
+            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Grain")
+            }
+        }
+
+        // PASS 6: Light Leak (Procedural light leak effect)
+        if preset.lightLeak.enabled {
+            if let result = applyLightLeak(input: currentInput, config: preset.lightLeak, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("LightLeak")
+            }
+        }
+
+        // PASS 7: Date Stamp (Procedural 7-segment display)
+        if preset.dateStamp.enabled {
+            if let result = applyDateStamp(input: currentInput, config: preset.dateStamp, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("DateStamp")
+            }
+        }
+
+        // PASS 8: Overlays (Dust & Scratches - applied to image, not frame)
+        if preset.overlays.enabled {
+            if let result = applyOverlays(input: currentInput, config: preset.overlays, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Overlays")
+            }
+        }
+
+        // PASS 9: Instant Frame (for Polaroid/Instax look)
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -504,17 +564,37 @@ class FilterRenderer {
             passResults.append("ColorGrading✗")
         }
 
-        // PASS 3: Grain
-        if preset.grain.enabled {
-            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+        // PASS 2.5: Black & White Conversion (AFTER color grading for proper channel mixing)
+        if preset.bw.enabled {
+            if let result = applyBWConvert(input: currentInput, config: preset.bw, commandBuffer: commandBuffer) {
                 currentInput = result
-                passResults.append("Grain✓")
+                passResults.append("BWConvert✓")
             } else {
-                passResults.append("Grain✗")
+                passResults.append("BWConvert✗")
             }
         }
 
-        // PASS 4-7: Bloom (Separable - 4 passes) - FULL QUALITY
+        // PASS 3: Flash (BEFORE Bloom/Halation so bright flash areas bloom)
+        if preset.flash.enabled {
+            if let result = applyFlash(input: currentInput, config: preset.flash, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("Flash✓")
+            } else {
+                passResults.append("Flash✗")
+            }
+        }
+
+        // PASS 4: CCD Bloom (Digicam vertical smear - alternative to standard bloom)
+        if preset.ccdBloom.enabled {
+            if let result = applyCCDBloom(input: currentInput, config: preset.ccdBloom, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("CCDBloom✓")
+            } else {
+                passResults.append("CCDBloom✗")
+            }
+        }
+
+        // PASS 5-8: Bloom (Separable - 4 passes) - FULL QUALITY
         if preset.bloom.enabled {
             if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -544,7 +624,47 @@ class FilterRenderer {
             }
         }
 
-        // PASS 13: Instant Frame
+        // PASS 13: Grain (AFTER lighting effects for natural appearance)
+        if preset.grain.enabled {
+            if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("Grain✓")
+            } else {
+                passResults.append("Grain✗")
+            }
+        }
+
+        // PASS 14: Light Leak (Procedural light leak effect)
+        if preset.lightLeak.enabled {
+            if let result = applyLightLeak(input: currentInput, config: preset.lightLeak, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("LightLeak✓")
+            } else {
+                passResults.append("LightLeak✗")
+            }
+        }
+
+        // PASS 15: Date Stamp (Procedural 7-segment display)
+        if preset.dateStamp.enabled {
+            if let result = applyDateStamp(input: currentInput, config: preset.dateStamp, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("DateStamp✓")
+            } else {
+                passResults.append("DateStamp✗")
+            }
+        }
+
+        // PASS 16: Overlays (Dust & Scratches - applied to image, not frame)
+        if preset.overlays.enabled {
+            if let result = applyOverlays(input: currentInput, config: preset.overlays, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("Overlays✓")
+            } else {
+                passResults.append("Overlays✗")
+            }
+        }
+
+        // PASS 17: Instant Frame
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -834,6 +954,34 @@ class FilterRenderer {
         return output
     }
 
+    // MARK: - Flash Effect (Disposable Camera)
+
+    private func applyFlash(input: MTLTexture, config: FlashConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.flashPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.flashPipeline == nil {
+                print("❌ FilterRenderer: flashPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareFlashParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<FlashParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
     private func blitToOutput(source: MTLTexture, destination: MTLTexture, commandBuffer: MTLCommandBuffer) {
         guard let blitEncoder = commandBuffer.makeBlitCommandEncoder() else { return }
         let width = min(source.width, destination.width)
@@ -932,6 +1080,353 @@ class FilterRenderer {
         params.edgeFade = 0.05
         params.cornerDarkening = 0.08
         params.enabled = config.enabled ? 1 : 0
+        return params
+    }
+
+    private func prepareFlashParams(_ config: FlashConfig) -> FlashParams {
+        var params = FlashParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.intensity = config.intensity
+        params.falloff = config.falloff
+        params.warmth = config.warmth
+        params.shadowLift = config.shadowLift
+        params.centerBoost = config.centerBoost
+        params.position = SIMD2<Float>(config.position.x, config.position.y)
+        params.radius = config.radius
+        return params
+    }
+
+    // MARK: - Light Leak Effect (Procedural)
+
+    private func applyLightLeak(input: MTLTexture, config: LightLeakConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.lightLeakPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.lightLeakPipeline == nil {
+                print("❌ FilterRenderer: lightLeakPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareLightLeakParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<LightLeakParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareLightLeakParams(_ config: LightLeakConfig) -> LightLeakParams {
+        var params = LightLeakParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.leakType = Int32(leakTypeToInt(config.type))
+        params.opacity = config.opacity
+        params.size = config.size
+        params.softness = config.softness
+        params.warmth = config.warmth
+        params.saturation = config.saturation
+        params.hueShift = config.hueShift
+        params.blendMode = Int32(config.blendMode.rawValue)
+        params.seed = config.seed
+        return params
+    }
+
+    private func leakTypeToInt(_ type: LightLeakType) -> Int {
+        switch type {
+        case .cornerTopLeft: return 0
+        case .cornerTopRight: return 1
+        case .cornerBottomLeft: return 2
+        case .cornerBottomRight: return 3
+        case .edgeTop: return 4
+        case .edgeBottom: return 5
+        case .edgeLeft: return 6
+        case .edgeRight: return 7
+        case .streak: return 8
+        case .random: return 9
+        }
+    }
+
+    // MARK: - Date Stamp Effect (Procedural 7-Segment Display)
+
+    private func applyDateStamp(input: MTLTexture, config: DateStampConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.dateStampPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.dateStampPipeline == nil {
+                print("❌ FilterRenderer: dateStampPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareDateStampParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<DateStampParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareDateStampParams(_ config: DateStampConfig) -> DateStampParams {
+        var params = DateStampParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Convert date string to digit array for 7-segment display
+        // Format: "12 25 '24" → digits: [1,2,-1,2,5,-1,10,2,4]
+        // -1 = space, 10 = quote, 11 = slash, 12 = dot
+        let dateString = config.format.format(Date())
+        var digits: [Int32] = []
+        for char in dateString {
+            switch char {
+            case "0"..."9":
+                digits.append(Int32(char.asciiValue! - 48)) // '0' = 48
+            case " ":
+                digits.append(-1) // space
+            case "'":
+                digits.append(10) // quote
+            case "/":
+                digits.append(11) // slash
+            case ".":
+                digits.append(12) // dot
+            default:
+                break
+            }
+        }
+
+        // Fill digits array (max 10)
+        let count = min(digits.count, 10)
+        for i in 0..<count {
+            setDigit(&params, index: i, value: digits[i])
+        }
+        params.digitCount = Int32(count)
+
+        // Position
+        params.position = Int32(positionToInt(config.position))
+
+        // Color
+        let rgb = config.color.rgb
+        params.color = SIMD3<Float>(rgb.r, rgb.g, rgb.b)
+        params.opacity = config.opacity
+        params.scale = config.scale
+        params.marginX = config.marginX
+        params.marginY = config.marginY
+
+        // Glow effect
+        params.glowEnabled = config.glowEnabled ? 1 : 0
+        params.glowIntensity = config.glowIntensity
+
+        return params
+    }
+
+    private func setDigit(_ params: inout DateStampParams, index: Int, value: Int32) {
+        switch index {
+        case 0: params.digits.0 = value
+        case 1: params.digits.1 = value
+        case 2: params.digits.2 = value
+        case 3: params.digits.3 = value
+        case 4: params.digits.4 = value
+        case 5: params.digits.5 = value
+        case 6: params.digits.6 = value
+        case 7: params.digits.7 = value
+        case 8: params.digits.8 = value
+        case 9: params.digits.9 = value
+        default: break
+        }
+    }
+
+    private func positionToInt(_ position: DateStampPosition) -> Int {
+        switch position {
+        case .bottomRight: return 0
+        case .bottomLeft: return 1
+        case .topRight: return 2
+        case .topLeft: return 3
+        }
+    }
+
+    // MARK: - CCD Bloom Effect (Digicam Vertical Smear)
+
+    private func applyCCDBloom(input: MTLTexture, config: CCDBloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.ccdBloomPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.ccdBloomPipeline == nil {
+                print("❌ FilterRenderer: ccdBloomPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareCCDBloomParams(config, textureWidth: input.width, textureHeight: input.height)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<CCDBloomParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareCCDBloomParams(_ config: CCDBloomConfig, textureWidth: Int, textureHeight: Int) -> CCDBloomParams {
+        var params = CCDBloomParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.intensity = config.intensity
+        params.threshold = config.threshold
+        params.verticalSmear = config.verticalSmear
+        params.smearLength = config.smearLength
+        params.smearFalloff = config.smearFalloff
+        params.horizontalBloom = config.horizontalBloom
+        params.horizontalRadius = config.horizontalRadius
+        params.purpleFringing = config.purpleFringing
+        params.fringeWidth = config.fringeWidth
+        params.warmShift = config.warmShift
+        params.imageSize = SIMD2<Float>(Float(textureWidth), Float(textureHeight))
+        return params
+    }
+
+    // MARK: - Black & White Pipeline
+
+    private func applyBWConvert(input: MTLTexture, config: BWConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.bwPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.bwPipeline == nil {
+                print("❌ FilterRenderer: bwPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareBWParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<BWParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareBWParams(_ config: BWConfig) -> BWParams {
+        var params = BWParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Channel Mixing
+        params.redWeight = config.redWeight
+        params.greenWeight = config.greenWeight
+        params.blueWeight = config.blueWeight
+
+        // Contrast & Tone
+        params.contrast = config.contrast
+        params.brightness = config.brightness
+        params.gamma = config.gamma
+
+        // Toning
+        switch config.toning {
+        case .none:      params.toningMode = 0
+        case .sepia:     params.toningMode = 1
+        case .selenium:  params.toningMode = 2
+        case .cyanotype: params.toningMode = 3
+        case .splitTone: params.toningMode = 4
+        case .custom:    params.toningMode = 5
+        }
+        params.toningIntensity = config.toningIntensity
+        params.customColor = SIMD3<Float>(config.customColor.r, config.customColor.g, config.customColor.b)
+
+        // Split Tone
+        params.shadowHue = config.splitTone.shadowHue
+        params.shadowSat = config.splitTone.shadowSat
+        params.highlightHue = config.splitTone.highlightHue
+        params.highlightSat = config.splitTone.highlightSat
+        params.splitBalance = config.splitTone.balance
+
+        // Grain
+        params.grainIntensity = config.grainIntensity
+        params.grainSize = config.grainSize
+        params.grainSeed = UInt32.random(in: 0..<10000) // Random seed for each frame
+
+        return params
+    }
+
+    // MARK: - Overlays (Dust & Scratches)
+
+    private func applyOverlays(input: MTLTexture, config: OverlaysConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.overlaysPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.overlaysPipeline == nil {
+                print("❌ FilterRenderer: overlaysPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareOverlaysParams(config, textureWidth: input.width, textureHeight: input.height)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<OverlaysParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareOverlaysParams(_ config: OverlaysConfig, textureWidth: Int, textureHeight: Int) -> OverlaysParams {
+        var params = OverlaysParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Dust
+        params.dustEnabled = config.dust.enabled ? 1 : 0
+        params.dustDensity = config.dust.density
+        params.dustSize = config.dust.size
+        params.dustOpacity = config.dust.opacity
+        params.dustVariation = config.dust.variation
+        params.dustClumping = config.dust.clumping
+        params.dustBlendMode = Int32(config.dust.blendMode.rawValue)
+
+        // Scratches
+        params.scratchEnabled = config.scratches.enabled ? 1 : 0
+        params.scratchDensity = config.scratches.density
+        params.scratchLength = config.scratches.length
+        params.scratchWidth = config.scratches.width
+        params.scratchOpacity = config.scratches.opacity
+        params.scratchAngle = config.scratches.angle
+        params.scratchVertical = config.scratches.vertical ? 1 : 0
+        params.scratchBlendMode = Int32(config.scratches.blendMode.rawValue)
+
+        // Global
+        params.seed = config.animate ? UInt32.random(in: 0..<100000) : config.seed
+        params.aspectRatio = Float(textureWidth) / Float(textureHeight)
+
         return params
     }
 }

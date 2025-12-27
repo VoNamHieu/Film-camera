@@ -85,6 +85,24 @@ class RenderEngine {
     // ★★★ NEW: Aspect-Fill Scaling Pipeline ★★★
     private(set) var aspectFillScalePipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: Flash Effect Pipeline ★★★
+    private(set) var flashPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Light Leak Effect Pipeline ★★★
+    private(set) var lightLeakPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Date Stamp Effect Pipeline ★★★
+    private(set) var dateStampPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: CCD Bloom Effect Pipeline ★★★
+    private(set) var ccdBloomPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Black & White Pipeline ★★★
+    private(set) var bwPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Overlays Pipeline (Dust & Scratches) ★★★
+    private(set) var overlaysPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -179,6 +197,24 @@ class RenderEngine {
         // ★★★ NEW: Aspect-Fill Scaling Pipeline ★★★
         // Uses vertexAspectFill for aspect-correct scaling
         aspectFillScalePipeline = createAspectFillPipeline(fragmentName: "colorGradingFragment")
+
+        // ★★★ NEW: Flash Effect Pipeline ★★★
+        flashPipeline = createPipeline(vertex: vertexFunction, fragmentName: "flashFragment")
+
+        // ★★★ NEW: Light Leak Effect Pipeline ★★★
+        lightLeakPipeline = createPipeline(vertex: vertexFunction, fragmentName: "lightLeakFragment")
+
+        // ★★★ NEW: Date Stamp Effect Pipeline ★★★
+        dateStampPipeline = createPipeline(vertex: vertexFunction, fragmentName: "dateStampFragment")
+
+        // ★★★ NEW: CCD Bloom Effect Pipeline ★★★
+        ccdBloomPipeline = createPipeline(vertex: vertexFunction, fragmentName: "ccdBloomFragment")
+
+        // ★★★ NEW: Black & White Pipeline ★★★
+        bwPipeline = createPipeline(vertex: vertexFunction, fragmentName: "bwConvertFragment")
+
+        // ★★★ NEW: Overlays Pipeline (Dust & Scratches) ★★★
+        overlaysPipeline = createPipeline(vertex: vertexFunction, fragmentName: "overlaysFragment")
 
         printPipelineStatus()
     }
@@ -305,6 +341,24 @@ class RenderEngine {
         print("")
         print("   Aspect-Fill Scaling:")
         print("      aspectFillScale: \(aspectFillScalePipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Flash Effect:")
+        print("      flash:           \(flashPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Light Leak Effect:")
+        print("      lightLeak:       \(lightLeakPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Date Stamp Effect:")
+        print("      dateStamp:       \(dateStampPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   CCD Bloom Effect:")
+        print("      ccdBloom:        \(ccdBloomPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   B&W Pipeline:")
+        print("      bw:              \(bwPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Overlays Pipeline:")
+        print("      overlays:        \(overlaysPipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {

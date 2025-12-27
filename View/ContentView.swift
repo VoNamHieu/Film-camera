@@ -9,6 +9,7 @@ import PhotosUI
 
 struct ContentView: View {
     @StateObject private var cameraManager = CameraManager()
+    @StateObject private var effectManager = EffectStateManager()
     @ObservedObject private var galleryManager = GalleryManager.shared
     @State private var selectedPreset: FilterPreset = FilmPresets.kodakPortra400
     @State private var selectedCategory: FilterCategory = .professional
@@ -25,7 +26,23 @@ struct ContentView: View {
     // Video recording states
     @State private var isVideoMode = false
     @State private var showVideoSavedAlert = false
-    
+
+    // Effect controls state
+    @State private var showEffectControls = false
+
+    // Computed effective preset for preview (applies effect overrides)
+    private var effectivePreset: FilterPreset {
+        effectManager.applyToPreset() ?? selectedPreset
+    }
+
+    // Custom binding that uses effective preset for preview
+    private var previewPresetBinding: Binding<FilterPreset> {
+        Binding(
+            get: { effectivePreset },
+            set: { selectedPreset = $0 }
+        )
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -89,7 +106,8 @@ struct ContentView: View {
         ZStack {
             // ★★★ FIX: Check if RenderEngine is fully available (Metal + shaders) ★★★
             if RenderEngine.isAvailable {
-                MetalPreviewView(cameraManager: cameraManager, selectedPreset: $selectedPreset)
+                // Use effective preset (with effect overrides) for real-time preview
+                MetalPreviewView(cameraManager: cameraManager, selectedPreset: previewPresetBinding)
                     .ignoresSafeArea()
             } else {
                 // Fallback when Metal or shaders unavailable
@@ -134,6 +152,33 @@ struct ContentView: View {
                     .ignoresSafeArea()
                     .transition(.opacity)
             }
+
+            // Effect Controls Panel (slides from bottom)
+            if showEffectControls {
+                VStack(spacing: 0) {
+                    Spacer()
+
+                    // Compact effect bar
+                    CompactEffectBar(effectManager: effectManager)
+
+                    // Full effect controls
+                    EffectControlsView(effectManager: effectManager)
+                        .frame(height: 350)
+                        .transition(.move(edge: .bottom))
+                }
+                .background(Color.black.opacity(0.001)) // Tap to dismiss
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showEffectControls = false
+                    }
+                }
+            }
+        }
+        .onChange(of: selectedPreset) { _, newPreset in
+            effectManager.loadPreset(newPreset)
+        }
+        .onAppear {
+            effectManager.loadPreset(selectedPreset)
         }
         .sheet(isPresented: $showPresetPicker) {
             PresetPickerView(
@@ -201,7 +246,29 @@ struct ContentView: View {
             }
             
             Spacer()
-            
+
+            // Effect controls button
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showEffectControls.toggle()
+                }
+            }) {
+                ZStack {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(showEffectControls ? .yellow : .white)
+                        .frame(width: 44, height: 44)
+                        .background(showEffectControls ? .yellow.opacity(0.3) : .black.opacity(0.4))
+                        .clipShape(Circle())
+
+                    // Performance indicator dot
+                    Circle()
+                        .fill(effectManager.performanceLevel.color)
+                        .frame(width: 8, height: 8)
+                        .offset(x: 14, y: -14)
+                }
+            }
+
             // More options
             Button(action: { showPresetPicker = true }) {
                 Image(systemName: "slider.horizontal.3")
@@ -473,8 +540,11 @@ struct ContentView: View {
             isCapturing = true
         }
 
+        // Use modified preset with effect overrides applied
+        let effectivePreset = effectManager.applyToPreset() ?? selectedPreset
+
         // Capture with both original and filtered images
-        cameraManager.capturePhotoWithOriginal(preset: selectedPreset) { original, filtered in
+        cameraManager.capturePhotoWithOriginal(preset: effectivePreset) { original, filtered in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isCapturing = false
             }
@@ -515,8 +585,10 @@ struct ContentView: View {
             let notificationFeedback = UINotificationFeedbackGenerator()
             notificationFeedback.notificationOccurred(.success)
         } else {
+            // Use modified preset with effect overrides applied
+            let effectivePreset = effectManager.applyToPreset() ?? selectedPreset
             // Start recording
-            cameraManager.startVideoRecording(preset: selectedPreset)
+            cameraManager.startVideoRecording(preset: effectivePreset)
         }
     }
 }

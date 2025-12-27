@@ -176,4 +176,137 @@ typedef struct {
     float outputAspect;     // Output drawable aspect ratio (width/height)
 } AspectScaleParams;
 
+// ★★★ NEW: FLASH EFFECT (Disposable Camera) ★★★
+// Simulates on-camera flash with realistic falloff and warm tint
+typedef struct {
+    int enabled;
+    float intensity;        // Overall flash strength (0.0-1.0)
+    float falloff;          // Radial falloff exponent (1.5-3.0)
+    float warmth;           // Warm tint amount (0.0-0.3)
+    float shadowLift;       // Lift shadows in flash area (0.0-0.5)
+    float centerBoost;      // Extra brightness at center (0.0-0.5)
+    vector_float2 position; // Flash origin (normalized 0-1)
+    float radius;           // Flash radius (0.3-1.0)
+} FlashParams;
+
+// ★★★ NEW: LIGHT LEAK EFFECT (Procedural) ★★★
+// Simulates light leaking through camera body seals
+typedef struct {
+    int enabled;
+    int leakType;           // 0-9: corner/edge/streak types
+    float opacity;          // Overall opacity (0.0-1.0)
+    float size;             // Leak area size (0.2-1.0)
+    float softness;         // Edge softness (0.1-1.0)
+    float warmth;           // Color warmth (-1.0 to 1.0)
+    float saturation;       // Color saturation (0.0-1.5)
+    float hueShift;         // Hue rotation (0.0-1.0)
+    int blendMode;          // 0=screen, 1=add, 2=overlay, 3=softLight
+    unsigned int seed;      // Random seed for variation
+} LightLeakParams;
+
+// ★★★ NEW: DATE STAMP EFFECT (Procedural 7-Segment) ★★★
+// Renders date text directly in shader using 7-segment display style
+typedef struct {
+    int enabled;
+    int digits[10];         // Up to 10 digits/chars (-1 = space, 0-9, 10=quote, 11=slash, 12=dot)
+    int digitCount;         // Number of active digits
+    int position;           // 0=bottomRight, 1=bottomLeft, 2=topRight, 3=topLeft
+    vector_float3 color;    // Text color RGB
+    float opacity;          // Overall opacity
+    float scale;            // Size multiplier
+    float marginX;          // Horizontal margin (normalized)
+    float marginY;          // Vertical margin (normalized)
+    int glowEnabled;        // LED glow effect
+    float glowIntensity;    // Glow strength
+} DateStampParams;
+
+// ★★★ NEW: CCD BLOOM EFFECT (Digicam) ★★★
+// Simulates vertical smear and purple fringing of CCD sensors
+typedef struct {
+    int enabled;
+    float intensity;          // Overall intensity (0.0-1.0)
+    float threshold;          // Brightness threshold (0.5-1.0)
+
+    // Vertical Smear (CCD charge leak)
+    float verticalSmear;      // Vertical smear intensity (0.0-1.0)
+    float smearLength;        // Smear length (normalized 0.0-1.0)
+    float smearFalloff;       // Falloff curve (1.0=linear, 2.0=quadratic)
+
+    // Horizontal Bloom
+    float horizontalBloom;    // Horizontal bloom intensity (0.0-0.5)
+    float horizontalRadius;   // Horizontal blur radius (0.0-1.0)
+
+    // Purple Fringing
+    float purpleFringing;     // Purple fringe intensity (0.0-0.5)
+    float fringeWidth;        // Fringe width (normalized)
+
+    // Color
+    float warmShift;          // Warm color shift in bloom (0.0-0.3)
+
+    // Image dimensions
+    vector_float2 imageSize;  // Width, Height for pixel calculations
+} CCDBloomParams;
+
+// ★★★ NEW: BLACK & WHITE PIPELINE ★★★
+// Converts image to B&W with channel mixing and optional toning
+typedef struct {
+    int enabled;
+
+    // Channel Mixing (RGB contribution to luminance)
+    float redWeight;          // Red channel weight (0.0-2.0)
+    float greenWeight;        // Green channel weight (0.0-2.0)
+    float blueWeight;         // Blue channel weight (0.0-2.0)
+
+    // Contrast & Tone
+    float contrast;           // Contrast adjustment (-1.0 to 1.0)
+    float brightness;         // Brightness adjustment (-1.0 to 1.0)
+    float gamma;              // Gamma curve (0.5-2.0, 1.0 = linear)
+
+    // Toning
+    int toningMode;           // 0=none, 1=sepia, 2=selenium, 3=cyanotype, 4=splitTone, 5=custom
+    float toningIntensity;    // Toning strength (0.0-1.0)
+    vector_float3 customColor;// Custom toning color RGB
+
+    // Split Tone (when toningMode = 4)
+    float shadowHue;          // Shadow color hue (0-1)
+    float shadowSat;          // Shadow saturation (0-1)
+    float highlightHue;       // Highlight color hue (0-1)
+    float highlightSat;       // Highlight saturation (0-1)
+    float splitBalance;       // Balance shadows/highlights (-1 to 1)
+
+    // B&W Grain
+    float grainIntensity;     // Grain amount (0.0-1.0)
+    float grainSize;          // Grain size (0.5-2.0)
+    unsigned int grainSeed;   // Random seed for grain
+} BWParams;
+
+// ★★★ NEW: OVERLAYS (Dust & Scratches) ★★★
+// Procedural dust particles and film scratches overlay
+typedef struct {
+    int enabled;
+
+    // Dust settings
+    int dustEnabled;
+    float dustDensity;        // Number of particles (0.0-1.0)
+    float dustSize;           // Particle size (0.5-2.0)
+    float dustOpacity;        // Dust opacity (0.0-1.0)
+    float dustVariation;      // Size variation (0.0-1.0)
+    float dustClumping;       // Clumping factor (0.0-1.0)
+    int dustBlendMode;        // 0=multiply, 1=screen, 2=overlay, 3=softLight
+
+    // Scratches settings
+    int scratchEnabled;
+    float scratchDensity;     // Number of scratches (0.0-1.0)
+    float scratchLength;      // Scratch length (0.0-1.0)
+    float scratchWidth;       // Scratch width (0.5-2.0)
+    float scratchOpacity;     // Scratches opacity (0.0-1.0)
+    float scratchAngle;       // Angle variation (-1.0 to 1.0)
+    int scratchVertical;      // Prefer vertical scratches
+    int scratchBlendMode;     // 0=multiply, 1=screen, 2=overlay, 3=softLight
+
+    // Global
+    unsigned int seed;        // Random seed
+    float aspectRatio;        // For correct scaling
+} OverlaysParams;
+
 #endif /* ShaderTypes_h */
