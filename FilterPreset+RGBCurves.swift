@@ -163,6 +163,56 @@ extension FilterPreset {
                 ],
                 enabled: true
             )
+
+        case .vhs:
+            // VHS-style curves - slightly degraded, warm, reduced contrast
+            return FilmCurvesConfig(
+                redCurve: [
+                    FilmCurvePoint(input: 0.0, output: 0.05),
+                    FilmCurvePoint(input: 0.3, output: 0.35),
+                    FilmCurvePoint(input: 0.7, output: 0.72),
+                    FilmCurvePoint(input: 1.0, output: 0.95)
+                ],
+                greenCurve: [
+                    FilmCurvePoint(input: 0.0, output: 0.04),
+                    FilmCurvePoint(input: 0.5, output: 0.50),
+                    FilmCurvePoint(input: 1.0, output: 0.94)
+                ],
+                blueCurve: [
+                    FilmCurvePoint(input: 0.0, output: 0.06),
+                    FilmCurvePoint(input: 0.3, output: 0.32),
+                    FilmCurvePoint(input: 0.7, output: 0.66),
+                    FilmCurvePoint(input: 1.0, output: 0.90)
+                ],
+                enabled: true
+            )
+
+        case .digicam:
+            // Digicam curves - punchy contrast, oversaturated, slightly clipped
+            return FilmCurvesConfig(
+                redCurve: [
+                    FilmCurvePoint(input: 0.0, output: 0.0),
+                    FilmCurvePoint(input: 0.2, output: 0.15),
+                    FilmCurvePoint(input: 0.5, output: 0.55),
+                    FilmCurvePoint(input: 0.8, output: 0.88),
+                    FilmCurvePoint(input: 1.0, output: 1.0)
+                ],
+                greenCurve: [
+                    FilmCurvePoint(input: 0.0, output: 0.0),
+                    FilmCurvePoint(input: 0.2, output: 0.16),
+                    FilmCurvePoint(input: 0.5, output: 0.54),
+                    FilmCurvePoint(input: 0.8, output: 0.86),
+                    FilmCurvePoint(input: 1.0, output: 1.0)
+                ],
+                blueCurve: [
+                    FilmCurvePoint(input: 0.0, output: 0.0),
+                    FilmCurvePoint(input: 0.2, output: 0.18),
+                    FilmCurvePoint(input: 0.5, output: 0.52),
+                    FilmCurvePoint(input: 0.8, output: 0.84),
+                    FilmCurvePoint(input: 1.0, output: 1.0)
+                ],
+                enabled: true
+            )
         }
     }
 }
