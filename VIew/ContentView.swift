@@ -756,6 +756,8 @@ struct CategoryPillButton: View {
         case .food: return "Food"
         case .night: return "Night"
         case .creative: return "Creative"
+        case .vhs: return "VHS"
+        case .digicam: return "Digicam"
         }
     }
     
@@ -824,6 +826,8 @@ struct PresetThumbnailButton: View {
             case .food: return [.brown, .orange.opacity(0.7)]
             case .night: return [.purple, .blue]
             case .creative: return [.pink, .purple]
+            case .vhs: return [.red, .orange.opacity(0.6)]
+            case .digicam: return [.cyan, .blue.opacity(0.7)]
             }
         }()
         return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -921,6 +925,8 @@ struct PresetRowButton: View {
         case .food: return .brown
         case .night: return .purple
         case .creative: return .pink
+        case .vhs: return .red
+        case .digicam: return .cyan
         }
     }
 }
