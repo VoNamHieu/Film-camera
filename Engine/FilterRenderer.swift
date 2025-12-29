@@ -77,6 +77,26 @@ class FilterRenderer {
             failedPasses.append("ColorGrading")
         }
 
+        // PASS 1.2: Skin Tone Protection (AFTER color grading to protect skin from harsh edits)
+        if preset.skinToneProtection.enabled {
+            if let result = applySkinToneProtection(input: currentInput, config: preset.skinToneProtection, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("SkinTone")
+            }
+        }
+
+        // PASS 1.3: Tone Mapping (AFTER color grading for HDR compression)
+        if preset.toneMapping.enabled {
+            if let result = applyToneMapping(input: currentInput, config: preset.toneMapping, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("ToneMapping")
+            }
+        }
+
         // PASS 1.5: Black & White Conversion (AFTER color grading for proper channel mixing)
         if preset.bw.enabled {
             if let result = applyBWConvert(input: currentInput, config: preset.bw, commandBuffer: commandBuffer) {
@@ -167,7 +187,37 @@ class FilterRenderer {
             }
         }
 
-        // PASS 9: Instant Frame (for Polaroid/Instax look)
+        // PASS 9: VHS Effects (scanlines, color bleed, tracking)
+        if preset.vhsEffects.enabled {
+            if let result = applyVHSEffects(input: currentInput, config: preset.vhsEffects, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("VHS")
+            }
+        }
+
+        // PASS 10: Digicam Effects (digital noise, JPEG artifacts)
+        if preset.digicamEffects.enabled {
+            if let result = applyDigicamEffects(input: currentInput, config: preset.digicamEffects, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Digicam")
+            }
+        }
+
+        // PASS 11: Film Strip Effects (borders, perforations)
+        if preset.filmStripEffects.enabled {
+            if let result = applyFilmStripEffects(input: currentInput, config: preset.filmStripEffects, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("FilmStrip")
+            }
+        }
+
+        // PASS 12: Instant Frame (for Polaroid/Instax look)
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -562,6 +612,26 @@ class FilterRenderer {
             passResults.append("ColorGrading✓")
         } else {
             passResults.append("ColorGrading✗")
+        }
+
+        // PASS 2.2: Skin Tone Protection (AFTER color grading to protect skin from harsh edits)
+        if preset.skinToneProtection.enabled {
+            if let result = applySkinToneProtection(input: currentInput, config: preset.skinToneProtection, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("SkinTone✓")
+            } else {
+                passResults.append("SkinTone✗")
+            }
+        }
+
+        // PASS 2.3: Tone Mapping (AFTER color grading for HDR compression)
+        if preset.toneMapping.enabled {
+            if let result = applyToneMapping(input: currentInput, config: preset.toneMapping, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("ToneMapping✓")
+            } else {
+                passResults.append("ToneMapping✗")
+            }
         }
 
         // PASS 2.5: Black & White Conversion (AFTER color grading for proper channel mixing)
@@ -1037,7 +1107,7 @@ class FilterRenderer {
         params.tint = adj.tint
         params.fade = adj.fade
         params.clarity = adj.clarity
-        
+
         let split = preset.splitTone
         params.shadowsHue = split.shadowsHue
         params.shadowsSat = split.shadowsSat
@@ -1045,15 +1115,56 @@ class FilterRenderer {
         params.highlightsSat = split.highlightsSat
         params.splitBalance = split.balance
         params.midtoneProtection = split.midtoneProtection
-        
+
         params.selectiveColorCount = Int32(min(preset.selectiveColor.count, 8))
         for (i, selColor) in preset.selectiveColor.prefix(8).enumerated() {
             let colorData = SelectiveColorData(hue: selColor.hue, range: selColor.range, satAdj: selColor.sat, lumAdj: selColor.lum, hueShift: selColor.hueShift)
             params.setSelectiveColor(at: i, value: colorData)
         }
-        
+
         params.lutIntensity = preset.lutIntensity
         params.useLUT = preset.lutFile != nil ? 1 : 0
+
+        // ★★★ FIX: Initialize RGB Curves ★★★
+        params.rgbCurves = prepareRGBCurvesParams(preset.rgbCurves)
+
+        return params
+    }
+
+    // ★★★ NEW: Prepare RGB Curves Params ★★★
+    private func prepareRGBCurvesParams(_ curves: RGBCurves) -> RGBCurvesParams {
+        var params = RGBCurvesParams()
+
+        // Check if curves are effectively enabled (have control points)
+        let hasRedCurve = !curves.red.isEmpty
+        let hasGreenCurve = !curves.green.isEmpty
+        let hasBlueCurve = !curves.blue.isEmpty
+        params.enabled = (hasRedCurve || hasGreenCurve || hasBlueCurve) ? 1 : 0
+
+        // Copy red curve points
+        params.redPointCount = Int32(min(curves.red.count, Int(MAX_CURVE_POINTS)))
+        for (i, point) in curves.red.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
+            params.redCurve.withUnsafeMutableBufferPointer { buffer in
+                buffer[i] = CurvePoint(input: point.input, output: point.output)
+            }
+        }
+
+        // Copy green curve points
+        params.greenPointCount = Int32(min(curves.green.count, Int(MAX_CURVE_POINTS)))
+        for (i, point) in curves.green.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
+            params.greenCurve.withUnsafeMutableBufferPointer { buffer in
+                buffer[i] = CurvePoint(input: point.input, output: point.output)
+            }
+        }
+
+        // Copy blue curve points
+        params.bluePointCount = Int32(min(curves.blue.count, Int(MAX_CURVE_POINTS)))
+        for (i, point) in curves.blue.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
+            params.blueCurve.withUnsafeMutableBufferPointer { buffer in
+                buffer[i] = CurvePoint(input: point.input, output: point.output)
+            }
+        }
+
         return params
     }
 
@@ -1144,6 +1255,82 @@ class FilterRenderer {
         params.specularThreshold = config.specularThreshold
         params.specularBoost = config.specularBoost
 
+        return params
+    }
+
+    // MARK: - Skin Tone Protection
+
+    private func applySkinToneProtection(input: MTLTexture, config: SkinToneProtection, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.skinToneProtectionPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.skinToneProtectionPipeline == nil {
+                print("❌ FilterRenderer: skinToneProtectionPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareSkinToneParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<SkinToneParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareSkinToneParams(_ config: SkinToneProtection) -> SkinToneParams {
+        var params = SkinToneParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.hueCenter = config.hueCenter
+        params.hueRange = config.hueRange
+        params.satProtection = config.satProtection
+        params.warmthBoost = config.warmthBoost
+        return params
+    }
+
+    // MARK: - Tone Mapping
+
+    private func applyToneMapping(input: MTLTexture, config: ToneMapping, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.toneMappingPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.toneMappingPipeline == nil {
+                print("❌ FilterRenderer: toneMappingPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareToneMappingParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<ToneMappingParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareToneMappingParams(_ config: ToneMapping) -> ToneMappingParams {
+        var params = ToneMappingParams()
+        params.enabled = config.enabled ? 1 : 0
+        params.whitePoint = config.whitePoint
+        params.shoulderStrength = config.shoulderStrength
+        params.linearStrength = config.linearStrength
+        params.toeStrength = config.toeStrength
         return params
     }
 
