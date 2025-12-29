@@ -180,33 +180,15 @@ struct FilmPresets {
         label: "Fuji Velvia 100 · Vivid Slide",
         category: .slide,
         lutId: "FUJI_VELVIA_100",
-        lutFile: "Fuji_Velvia_100_Linear.cube",  // ★ Fixed
+        lutFile: "Fuji_Velvia_100_Linear.cube",
         colorSpace: "linear",
-        colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.08, saturation: 0.18, vibrance: 0.12, temperature: 0.02),
-        splitTone: SplitToneConfig(shadowsHue: 225, shadowsSat: 0.12, highlightsHue: 35, highlightsSat: 0.05),
-        selectiveColor: [
-            SelectiveColorAdjustment(hue: 120, range: 50, sat: 0.20, hueShift: -10),
-            SelectiveColorAdjustment(hue: 210, range: 40, sat: 0.15),
-            SelectiveColorAdjustment(hue: 15, range: 30, sat: 0.12, hueShift: 8)],
-        grain: GrainConfig(
-            enabled: true, globalIntensity: 0.08,
-            channels: GrainChannels(
-                red: GrainChannel(intensity: 0.07, size: 0.92, seed: 5001, softness: 0.68),
-                green: GrainChannel(intensity: 0.08, size: 0.95, seed: 5002, softness: 0.65),
-                blue: GrainChannel(intensity: 0.10, size: 1.00, seed: 5003, softness: 0.62)),
-            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.45, lacunarity: 1.6, baseFrequency: 0.85),
-            densityCurve: [
-                GrainDensityPoint(luma: 0.0, multiplier: 0.05),
-                GrainDensityPoint(luma: 0.35, multiplier: 0.80),
-                GrainDensityPoint(luma: 0.50, multiplier: 1.0),
-                GrainDensityPoint(luma: 0.75, multiplier: 0.50),
-                GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
-            chromatic: GrainChromatic(enabled: false),
-            clumping: GrainClumping(enabled: true, strength: 0.10, threshold: 0.30, clusterSize: 1.0),
-            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.35),
-            colorJitter: GrainColorJitter(enabled: false)),
-        bloom: BloomConfig(enabled: true, intensity: 0.03, threshold: 0.82, radius: 8, softness: 0.68),
-        vignette: VignetteConfig(enabled: true, intensity: 0.08, roundness: 0.90, feather: 0.62),
+        // ★ TEST: All effects disabled to isolate bug
+        colorAdjustments: ColorAdjustments(),  // all zeros
+        splitTone: SplitToneConfig(),          // disabled
+        selectiveColor: [],                     // empty
+        grain: GrainConfig(enabled: false),     // disabled
+        bloom: BloomConfig(enabled: false),     // disabled
+        vignette: VignetteConfig(enabled: false), // disabled
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Velvia 100", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2007,
             characteristics: ["Extremely high saturation", "Vivid colors", "High contrast", "Landscape favorite"]))
     
