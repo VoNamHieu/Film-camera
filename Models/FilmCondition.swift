@@ -327,13 +327,10 @@ struct FilmConditionConfig: Codable, Equatable {
         return GrainConfig(
             enabled: enabled,
             globalIntensity: effectiveGrainIntensity,
-            size: stockType == .bwNegative ? 1.2 : 1.0,
-            softness: stockType == .colorSlide ? 0.65 : 0.55,
-            colorTint: GrainColorTint(r: 1.0, g: 1.0, b: 1.0),
             channels: GrainChannels(
-                red: GrainChannel(intensity: 1.0, size: 1.0),
-                green: GrainChannel(intensity: stockType == .bwNegative ? 1.0 : 0.95),
-                blue: GrainChannel(intensity: stockType == .bwNegative ? 1.0 : 1.05)
+                red: GrainChannel(intensity: 1.0, size: stockType == .bwNegative ? 1.2 : 1.0, softness: stockType == .colorSlide ? 0.65 : 0.55),
+                green: GrainChannel(intensity: stockType == .bwNegative ? 1.0 : 0.95, size: 1.0, softness: 0.55),
+                blue: GrainChannel(intensity: stockType == .bwNegative ? 1.0 : 1.05, size: 1.0, softness: 0.55)
             )
         )
     }
@@ -367,11 +364,11 @@ struct FilmConditionConfig: Codable, Equatable {
 
         return HalationConfig(
             enabled: enabled,
+            color: HalationColor(r: 1.0, g: 0.20, b: 0.12),
             intensity: 0.40,
             threshold: 0.75,
             radius: 25,
-            softness: 0.80,
-            color: HalationColor(r: 1.0, g: 0.20, b: 0.12)
+            softness: 0.80
         )
     }
 
