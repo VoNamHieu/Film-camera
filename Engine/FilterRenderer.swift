@@ -1141,27 +1141,33 @@ class FilterRenderer {
         let hasBlueCurve = !curves.blue.isEmpty
         params.enabled = (hasRedCurve || hasGreenCurve || hasBlueCurve) ? 1 : 0
 
-        // Copy red curve points
+        // Copy red curve points (C array is imported as tuple, access via withUnsafeMutablePointer)
         params.redPointCount = Int32(min(curves.red.count, Int(MAX_CURVE_POINTS)))
-        for (i, point) in curves.red.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
-            params.redCurve.withUnsafeMutableBufferPointer { buffer in
-                buffer[i] = CurvePoint(input: point.input, output: point.output)
+        withUnsafeMutablePointer(to: &params.redCurve) { tuplePtr in
+            tuplePtr.withMemoryRebound(to: CurvePoint.self, capacity: Int(MAX_CURVE_POINTS)) { arrayPtr in
+                for (i, point) in curves.red.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
+                    arrayPtr[i] = CurvePoint(input: point.input, output: point.output)
+                }
             }
         }
 
         // Copy green curve points
         params.greenPointCount = Int32(min(curves.green.count, Int(MAX_CURVE_POINTS)))
-        for (i, point) in curves.green.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
-            params.greenCurve.withUnsafeMutableBufferPointer { buffer in
-                buffer[i] = CurvePoint(input: point.input, output: point.output)
+        withUnsafeMutablePointer(to: &params.greenCurve) { tuplePtr in
+            tuplePtr.withMemoryRebound(to: CurvePoint.self, capacity: Int(MAX_CURVE_POINTS)) { arrayPtr in
+                for (i, point) in curves.green.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
+                    arrayPtr[i] = CurvePoint(input: point.input, output: point.output)
+                }
             }
         }
 
         // Copy blue curve points
         params.bluePointCount = Int32(min(curves.blue.count, Int(MAX_CURVE_POINTS)))
-        for (i, point) in curves.blue.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
-            params.blueCurve.withUnsafeMutableBufferPointer { buffer in
-                buffer[i] = CurvePoint(input: point.input, output: point.output)
+        withUnsafeMutablePointer(to: &params.blueCurve) { tuplePtr in
+            tuplePtr.withMemoryRebound(to: CurvePoint.self, capacity: Int(MAX_CURVE_POINTS)) { arrayPtr in
+                for (i, point) in curves.blue.prefix(Int(MAX_CURVE_POINTS)).enumerated() {
+                    arrayPtr[i] = CurvePoint(input: point.input, output: point.output)
+                }
             }
         }
 
