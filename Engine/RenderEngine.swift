@@ -112,6 +112,9 @@ class RenderEngine {
     // ★★★ NEW: Film Strip Pipeline ★★★
     private(set) var filmStripPipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: Skin Tone Protection Pipeline ★★★
+    private(set) var skinToneProtectionPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -233,6 +236,9 @@ class RenderEngine {
 
         // ★★★ NEW: Film Strip Pipeline ★★★
         filmStripPipeline = createPipeline(vertex: vertexFunction, fragmentName: "filmStripFragment")
+
+        // ★★★ NEW: Skin Tone Protection Pipeline ★★★
+        skinToneProtectionPipeline = createPipeline(vertex: vertexFunction, fragmentName: "skinToneProtectionFragment")
 
         printPipelineStatus()
     }
