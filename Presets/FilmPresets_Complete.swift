@@ -76,18 +76,18 @@ struct FilmPresets {
             green: [RGBCurvePoint(input: 0, output: 0.02), RGBCurvePoint(input: 0.25, output: 0.26), RGBCurvePoint(input: 0.5, output: 0.52), RGBCurvePoint(input: 0.75, output: 0.78), RGBCurvePoint(input: 1, output: 0.99)],
             blue: [RGBCurvePoint(input: 0, output: 0.03), RGBCurvePoint(input: 0.25, output: 0.28), RGBCurvePoint(input: 0.5, output: 0.54), RGBCurvePoint(input: 0.75, output: 0.80), RGBCurvePoint(input: 1, output: 1.02)]),
         grain: GrainConfig(
-            enabled: true, globalIntensity: 0.16,
+            enabled: true, globalIntensity: 0.13,
             channels: GrainChannels(
-                red: GrainChannel(intensity: 0.14, size: 1.08, seed: 4001, softness: 0.58),
-                green: GrainChannel(intensity: 0.16, size: 1.10, seed: 4002, softness: 0.55),
-                blue: GrainChannel(intensity: 0.20, size: 1.15, seed: 4003, softness: 0.50)),
-            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.55, lacunarity: 1.7, baseFrequency: 1.0),
-            densityCurve: [GrainDensityPoint(luma: 0.0, multiplier: 0.15), GrainDensityPoint(luma: 0.35, multiplier: 1.0), GrainDensityPoint(luma: 0.80, multiplier: 0.30), GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
-            chromatic: GrainChromatic(enabled: true, redShift: ChromaticShift(x: 0.10, y: -0.05), blueShift: ChromaticShift(x: -0.12, y: 0.08)),
-            clumping: GrainClumping(enabled: true, strength: 0.22, threshold: 0.20, clusterSize: 1.3),
-            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 9971, coherence: 0.25),
-            colorJitter: GrainColorJitter(enabled: true, strength: 0.002, perPixel: true, blueStrength: 1.15, seed: 400)),
-        bloom: BloomConfig(enabled: true, intensity: 0.04, threshold: 0.80, radius: 10, softness: 0.70, colorTint: ColorTint(r: 1.0, g: 0.96, b: 0.88)),
+                red: GrainChannel(intensity: 0.12, size: 0.95, seed: 4001, softness: 0.62),
+                green: GrainChannel(intensity: 0.14, size: 0.98, seed: 4002, softness: 0.60),
+                blue: GrainChannel(intensity: 0.17, size: 1.02, seed: 4003, softness: 0.55)),
+            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.50, lacunarity: 1.65, baseFrequency: 0.90),
+            densityCurve: [GrainDensityPoint(luma: 0.0, multiplier: 0.10), GrainDensityPoint(luma: 0.35, multiplier: 1.0), GrainDensityPoint(luma: 0.80, multiplier: 0.25), GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
+            chromatic: GrainChromatic(enabled: true, redShift: ChromaticShift(x: 0.08, y: -0.04), blueShift: ChromaticShift(x: -0.10, y: 0.06)),
+            clumping: GrainClumping(enabled: true, strength: 0.18, threshold: 0.22, clusterSize: 1.15),
+            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 9971, coherence: 0.30),
+            colorJitter: GrainColorJitter(enabled: true, strength: 0.0015, perPixel: true, blueStrength: 1.10, seed: 400)),
+        bloom: BloomConfig(enabled: true, intensity: 0.035, threshold: 0.82, radius: 10, softness: 0.72, colorTint: ColorTint(r: 1.0, g: 0.98, b: 0.94)),
         vignette: VignetteConfig(enabled: true, intensity: 0.10, roundness: 0.88, feather: 0.60),
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Pro 400H", type: "Color Negative (C-41)", speed: 400, year: 2004,
             characteristics: ["Soft pastel tones", "Cool shadows", "Fine grain", "Discontinued 2021"]))
@@ -180,21 +180,31 @@ struct FilmPresets {
         label: "Fuji Velvia 100 · Vivid Slide",
         category: .slide,
         lutId: "FUJI_VELVIA_100",
-        lutFile: "Fuji_Velvia_100_Linear.cube",  // ★ Fixed
+        lutFile: "Fuji_Velvia_100_Linear.cube",
         colorSpace: "linear",
-        colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.08, saturation: 0.18, vibrance: 0.12, temperature: 0.02),
-        splitTone: SplitToneConfig(shadowsHue: 225, shadowsSat: 0.12, highlightsHue: 35, highlightsSat: 0.05),
-        selectiveColor: [
-            SelectiveColorAdjustment(hue: 120, range: 50, sat: 0.20, hueShift: -10),
-            SelectiveColorAdjustment(hue: 210, range: 40, sat: 0.15),
-            SelectiveColorAdjustment(hue: 15, range: 30, sat: 0.12, hueShift: 8)],
-        grain: GrainConfig(enabled: true, globalIntensity: 0.08,
+        colorAdjustments: ColorAdjustments(
+            exposure: 0.0, contrast: 0.05, saturation: 0.08, vibrance: 0.06, temperature: 0.01),
+        splitTone: SplitToneConfig(shadowsHue: 225, shadowsSat: 0.08, highlightsHue: 35, highlightsSat: 0.04),
+        selectiveColor: [],  // ★ REMOVED - was causing rainbow bug
+        grain: GrainConfig(
+            enabled: true, globalIntensity: 0.06,
             channels: GrainChannels(
-                red: GrainChannel(intensity: 0.07, size: 0.92, seed: 5001, softness: 0.68),
-                green: GrainChannel(intensity: 0.08, size: 0.95, seed: 5002, softness: 0.65),
-                blue: GrainChannel(intensity: 0.10, size: 1.00, seed: 5003, softness: 0.62))),
-        bloom: BloomConfig(enabled: true, intensity: 0.03, threshold: 0.82, radius: 8, softness: 0.68),
-        vignette: VignetteConfig(enabled: true, intensity: 0.08, roundness: 0.90, feather: 0.62),
+                red: GrainChannel(intensity: 0.05, size: 0.88, seed: 5001, softness: 0.70),
+                green: GrainChannel(intensity: 0.06, size: 0.90, seed: 5002, softness: 0.68),
+                blue: GrainChannel(intensity: 0.08, size: 0.95, seed: 5003, softness: 0.65)),
+            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.45, lacunarity: 1.6, baseFrequency: 0.85),
+            densityCurve: [
+                GrainDensityPoint(luma: 0.0, multiplier: 0.05),
+                GrainDensityPoint(luma: 0.35, multiplier: 0.80),
+                GrainDensityPoint(luma: 0.50, multiplier: 1.0),
+                GrainDensityPoint(luma: 0.75, multiplier: 0.50),
+                GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
+            chromatic: GrainChromatic(enabled: false),
+            clumping: GrainClumping(enabled: true, strength: 0.08, threshold: 0.30, clusterSize: 1.0),
+            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.35),
+            colorJitter: GrainColorJitter(enabled: false)),
+        bloom: BloomConfig(enabled: true, intensity: 0.02, threshold: 0.85, radius: 6, softness: 0.70),
+        vignette: VignetteConfig(enabled: true, intensity: 0.06, roundness: 0.90, feather: 0.65),
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Velvia 100", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2007,
             characteristics: ["Extremely high saturation", "Vivid colors", "High contrast", "Landscape favorite"]))
     
@@ -206,9 +216,28 @@ struct FilmPresets {
         lutFile: "provia_100f_33.cube",  // ★★★ FIXED: Was "Fuji_Provia_100F_Linear.cube"
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.05, saturation: 0.0, vibrance: 0.05),
+        grain: GrainConfig(
+            enabled: true, globalIntensity: 0.06,
+            channels: GrainChannels(
+                red: GrainChannel(intensity: 0.05, size: 0.85, seed: 5101, softness: 0.72),
+                green: GrainChannel(intensity: 0.06, size: 0.88, seed: 5102, softness: 0.70),
+                blue: GrainChannel(intensity: 0.07, size: 0.92, seed: 5103, softness: 0.68)),
+            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.40, lacunarity: 1.5, baseFrequency: 0.75),
+            densityCurve: [
+                GrainDensityPoint(luma: 0.0, multiplier: 0.05),
+                GrainDensityPoint(luma: 0.40, multiplier: 0.90),
+                GrainDensityPoint(luma: 0.55, multiplier: 1.0),
+                GrainDensityPoint(luma: 0.80, multiplier: 0.45),
+                GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
+            chromatic: GrainChromatic(enabled: false),
+            clumping: GrainClumping(enabled: true, strength: 0.08, threshold: 0.35, clusterSize: 0.9),
+            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.40),
+            colorJitter: GrainColorJitter(enabled: false)),
+        bloom: BloomConfig(enabled: true, intensity: 0.025, threshold: 0.84, radius: 8, softness: 0.70),
+        vignette: VignetteConfig(enabled: true, intensity: 0.06, roundness: 0.92, feather: 0.65),
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Provia 100F", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
             characteristics: ["Neutral colors", "Fine grain", "Versatile slide film"]))
-    
+
     static let fujiAstia100F = FilterPreset(
         id: "FUJI_ASTIA_100F",
         label: "Fuji Astia 100F · LUT",
@@ -217,6 +246,25 @@ struct FilmPresets {
         lutFile: "Fuji_Astia_100F_Linear.cube",  // ★ Confirmed correct
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: -0.02, saturation: -0.05, vibrance: 0.03),
+        grain: GrainConfig(
+            enabled: true, globalIntensity: 0.05,
+            channels: GrainChannels(
+                red: GrainChannel(intensity: 0.04, size: 0.80, seed: 5201, softness: 0.75),
+                green: GrainChannel(intensity: 0.05, size: 0.82, seed: 5202, softness: 0.73),
+                blue: GrainChannel(intensity: 0.06, size: 0.85, seed: 5203, softness: 0.70)),
+            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.38, lacunarity: 1.5, baseFrequency: 0.70),
+            densityCurve: [
+                GrainDensityPoint(luma: 0.0, multiplier: 0.05),
+                GrainDensityPoint(luma: 0.45, multiplier: 0.85),
+                GrainDensityPoint(luma: 0.60, multiplier: 1.0),
+                GrainDensityPoint(luma: 0.85, multiplier: 0.40),
+                GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
+            chromatic: GrainChromatic(enabled: false),
+            clumping: GrainClumping(enabled: true, strength: 0.06, threshold: 0.38, clusterSize: 0.85),
+            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.45),
+            colorJitter: GrainColorJitter(enabled: false)),
+        bloom: BloomConfig(enabled: true, intensity: 0.02, threshold: 0.85, radius: 10, softness: 0.75),
+        vignette: VignetteConfig(enabled: true, intensity: 0.05, roundness: 0.94, feather: 0.70),
         filmStock: FilmStock(manufacturer: "Fujifilm", name: "Astia 100F", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
             characteristics: ["Soft colors", "Portrait friendly", "Lower contrast"]))
     
