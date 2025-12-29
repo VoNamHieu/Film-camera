@@ -281,6 +281,14 @@ struct FlashPosition: Codable, Equatable {
     init(x: Float = 0.5, y: Float = 0.35) { self.x = x; self.y = y }
 }
 
+/// Physics-based flash falloff type
+enum FlashFalloffType: Int, Codable, CaseIterable, Equatable {
+    case power = 0          // Traditional power falloff (x^n)
+    case inverseSquare = 1  // Inverse square law: I = I₀ / d² (realistic)
+    case exponential = 2    // Exponential decay: I = I₀ × e^(-μd)
+    case gaussian = 3       // Gaussian falloff (smooth)
+}
+
 struct FlashConfig: Codable, Equatable {
     var enabled: Bool
     var intensity: Float           // Overall flash strength (0.0-1.0)
@@ -291,6 +299,26 @@ struct FlashConfig: Codable, Equatable {
     var position: FlashPosition    // Flash origin position (normalized 0-1)
     var radius: Float              // Flash radius as fraction of screen (0.3-1.0)
 
+    // NEW: Physics-based falloff
+    var falloffType: FlashFalloffType  // Type of light falloff physics
+    var distanceScale: Float           // Distance scale for inverse square (0.5-3.0)
+
+    // NEW: Hot spot simulation
+    var hotSpotEnabled: Bool           // Enable bright center spot
+    var hotSpotSize: Float             // Hot spot radius (0.05-0.3)
+    var hotSpotIntensity: Float        // Hot spot brightness boost (0.0-1.0)
+
+    // NEW: Fresnel ring effects
+    var fresnelEnabled: Bool           // Enable Fresnel ring artifacts
+    var fresnelRings: Int              // Number of rings (1-5)
+    var fresnelIntensity: Float        // Ring visibility (0.0-0.5)
+    var fresnelSpacing: Float          // Ring spacing (0.1-0.5)
+
+    // NEW: Specular highlights
+    var specularEnabled: Bool          // Enable specular catch lights
+    var specularThreshold: Float       // Brightness threshold (0.7-1.0)
+    var specularBoost: Float           // Specular intensity (0.0-1.0)
+
     init(enabled: Bool = false,
          intensity: Float = 0.6,
          falloff: Float = 2.0,
@@ -298,7 +326,19 @@ struct FlashConfig: Codable, Equatable {
          shadowLift: Float = 0.15,
          centerBoost: Float = 0.2,
          position: FlashPosition = FlashPosition(),
-         radius: Float = 0.7) {
+         radius: Float = 0.7,
+         falloffType: FlashFalloffType = .power,
+         distanceScale: Float = 1.0,
+         hotSpotEnabled: Bool = false,
+         hotSpotSize: Float = 0.1,
+         hotSpotIntensity: Float = 0.4,
+         fresnelEnabled: Bool = false,
+         fresnelRings: Int = 2,
+         fresnelIntensity: Float = 0.15,
+         fresnelSpacing: Float = 0.2,
+         specularEnabled: Bool = false,
+         specularThreshold: Float = 0.85,
+         specularBoost: Float = 0.3) {
         self.enabled = enabled
         self.intensity = intensity
         self.falloff = falloff
@@ -307,9 +347,21 @@ struct FlashConfig: Codable, Equatable {
         self.centerBoost = centerBoost
         self.position = position
         self.radius = radius
+        self.falloffType = falloffType
+        self.distanceScale = distanceScale
+        self.hotSpotEnabled = hotSpotEnabled
+        self.hotSpotSize = hotSpotSize
+        self.hotSpotIntensity = hotSpotIntensity
+        self.fresnelEnabled = fresnelEnabled
+        self.fresnelRings = max(1, min(5, fresnelRings))
+        self.fresnelIntensity = fresnelIntensity
+        self.fresnelSpacing = fresnelSpacing
+        self.specularEnabled = specularEnabled
+        self.specularThreshold = specularThreshold
+        self.specularBoost = specularBoost
     }
 
-    // MARK: - Static Presets
+    // MARK: - Static Presets (Basic)
 
     /// Harsh flash - typical disposable camera
     static let harsh = FlashConfig(
@@ -358,6 +410,102 @@ struct FlashConfig: Codable, Equatable {
         position: FlashPosition(x: 0.5, y: 0.25),
         radius: 0.5
     )
+
+    // MARK: - Physics-Based Presets
+
+    /// Realistic inverse square law falloff - true physics simulation
+    static let physicsRealistic = FlashConfig(
+        enabled: true,
+        intensity: 0.65,
+        falloff: 2.0,
+        warmth: 0.1,
+        shadowLift: 0.12,
+        centerBoost: 0.15,
+        position: FlashPosition(x: 0.5, y: 0.35),
+        radius: 0.75,
+        falloffType: .inverseSquare,
+        distanceScale: 1.5,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.08,
+        hotSpotIntensity: 0.35
+    )
+
+    /// Hot spot flash - bright center with fast falloff
+    static let hotSpot = FlashConfig(
+        enabled: true,
+        intensity: 0.75,
+        falloff: 2.2,
+        warmth: 0.06,
+        shadowLift: 0.1,
+        centerBoost: 0.3,
+        position: FlashPosition(x: 0.5, y: 0.32),
+        radius: 0.65,
+        falloffType: .gaussian,
+        distanceScale: 1.2,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.12,
+        hotSpotIntensity: 0.5
+    )
+
+    /// Fresnel ring flash - lens artifact simulation
+    static let fresnelRing = FlashConfig(
+        enabled: true,
+        intensity: 0.6,
+        falloff: 2.0,
+        warmth: 0.08,
+        shadowLift: 0.15,
+        centerBoost: 0.2,
+        position: FlashPosition(x: 0.5, y: 0.35),
+        radius: 0.7,
+        falloffType: .power,
+        distanceScale: 1.0,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.1,
+        hotSpotIntensity: 0.3,
+        fresnelEnabled: true,
+        fresnelRings: 3,
+        fresnelIntensity: 0.2,
+        fresnelSpacing: 0.15
+    )
+
+    /// Professional strobe - even illumination with specular
+    static let strobe = FlashConfig(
+        enabled: true,
+        intensity: 0.55,
+        falloff: 1.6,
+        warmth: 0.0,
+        shadowLift: 0.2,
+        centerBoost: 0.1,
+        position: FlashPosition(x: 0.5, y: 0.4),
+        radius: 0.9,
+        falloffType: .gaussian,
+        distanceScale: 2.0,
+        hotSpotEnabled: false,
+        specularEnabled: true,
+        specularThreshold: 0.8,
+        specularBoost: 0.4
+    )
+
+    /// On-camera disposable with hot spot and rings
+    static let disposablePhysics = FlashConfig(
+        enabled: true,
+        intensity: 0.7,
+        falloff: 2.3,
+        warmth: 0.12,
+        shadowLift: 0.08,
+        centerBoost: 0.25,
+        position: FlashPosition(x: 0.48, y: 0.28),
+        radius: 0.6,
+        falloffType: .inverseSquare,
+        distanceScale: 1.3,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.1,
+        hotSpotIntensity: 0.4,
+        fresnelEnabled: true,
+        fresnelRings: 2,
+        fresnelIntensity: 0.12,
+        fresnelSpacing: 0.18
+    )
 }
 
 // MARK: - Light Leak Effect (Procedural)
@@ -384,6 +532,14 @@ enum LightLeakBlendMode: Int, Codable, CaseIterable, Equatable {
     case softLight = 3    // Subtle
 }
 
+/// Physics-based falloff type for light leak
+enum LightLeakFalloff: Int, Codable, CaseIterable, Equatable {
+    case gaussian = 0       // Smooth gaussian falloff (default)
+    case exponential = 1    // Beer-Lambert physics-based decay
+    case linear = 2         // Simple linear falloff
+    case cosine = 3         // Cosine falloff (soft edges)
+}
+
 struct LightLeakConfig: Codable, Equatable {
     var enabled: Bool
     var type: LightLeakType           // Leak position/shape
@@ -396,6 +552,19 @@ struct LightLeakConfig: Codable, Equatable {
     var blendMode: LightLeakBlendMode // How leak blends with image
     var seed: UInt32                  // Random seed for variation
 
+    // NEW: Physics-based falloff
+    var falloffType: LightLeakFalloff // Falloff curve type
+    var falloffDecay: Float           // Decay rate for exponential (Beer-Lambert μ coefficient)
+
+    // NEW: Temporal animation (for video)
+    var temporalEnabled: Bool         // Enable flicker animation
+    var flickerSpeed: Float           // Flicker frequency (0.0-1.0)
+    var flickerIntensity: Float       // Flicker amount (0.0-0.5)
+
+    // NEW: Multi-layer depth simulation
+    var depthLayers: Int              // Number of color depth layers (1-4)
+    var depthFalloff: Float           // How much intensity drops per layer
+
     init(enabled: Bool = false,
          type: LightLeakType = .cornerTopRight,
          opacity: Float = 0.4,
@@ -405,7 +574,14 @@ struct LightLeakConfig: Codable, Equatable {
          saturation: Float = 1.0,
          hueShift: Float = 0.05,
          blendMode: LightLeakBlendMode = .screen,
-         seed: UInt32 = 0) {
+         seed: UInt32 = 0,
+         falloffType: LightLeakFalloff = .gaussian,
+         falloffDecay: Float = 2.5,
+         temporalEnabled: Bool = false,
+         flickerSpeed: Float = 0.3,
+         flickerIntensity: Float = 0.15,
+         depthLayers: Int = 1,
+         depthFalloff: Float = 0.3) {
         self.enabled = enabled
         self.type = type
         self.opacity = opacity
@@ -416,6 +592,13 @@ struct LightLeakConfig: Codable, Equatable {
         self.hueShift = hueShift
         self.blendMode = blendMode
         self.seed = seed
+        self.falloffType = falloffType
+        self.falloffDecay = falloffDecay
+        self.temporalEnabled = temporalEnabled
+        self.flickerSpeed = flickerSpeed
+        self.flickerIntensity = flickerIntensity
+        self.depthLayers = max(1, min(4, depthLayers))
+        self.depthFalloff = depthFalloff
     }
 
     // MARK: - Static Presets
@@ -496,6 +679,101 @@ struct LightLeakConfig: Codable, Equatable {
         saturation: 1.0,
         hueShift: 0.0,
         blendMode: .screen
+    )
+
+    // MARK: - Physics-Based Presets
+
+    /// Beer-Lambert exponential decay - realistic light penetration
+    static let physicsRealistic = LightLeakConfig(
+        enabled: true,
+        type: .edgeLeft,
+        opacity: 0.45,
+        size: 0.55,
+        softness: 0.5,
+        warmth: 0.65,
+        saturation: 1.0,
+        hueShift: 0.02,
+        blendMode: .screen,
+        seed: 0,
+        falloffType: .exponential,
+        falloffDecay: 3.0,
+        depthLayers: 3,
+        depthFalloff: 0.35
+    )
+
+    /// Multi-layer depth simulation - film edge exposure
+    static let filmEdgeMultiLayer = LightLeakConfig(
+        enabled: true,
+        type: .cornerTopRight,
+        opacity: 0.5,
+        size: 0.6,
+        softness: 0.55,
+        warmth: 0.7,
+        saturation: 1.1,
+        hueShift: 0.0,
+        blendMode: .screen,
+        seed: 0,
+        falloffType: .exponential,
+        falloffDecay: 2.5,
+        depthLayers: 4,
+        depthFalloff: 0.4
+    )
+
+    /// Animated flicker - for video/live view
+    static let animatedFlicker = LightLeakConfig(
+        enabled: true,
+        type: .edgeRight,
+        opacity: 0.4,
+        size: 0.5,
+        softness: 0.6,
+        warmth: 0.5,
+        saturation: 1.0,
+        hueShift: 0.05,
+        blendMode: .screen,
+        seed: 0,
+        falloffType: .gaussian,
+        falloffDecay: 2.5,
+        temporalEnabled: true,
+        flickerSpeed: 0.4,
+        flickerIntensity: 0.2,
+        depthLayers: 2,
+        depthFalloff: 0.3
+    )
+
+    /// Cosine falloff - very soft organic edges
+    static let softOrganic = LightLeakConfig(
+        enabled: true,
+        type: .cornerBottomRight,
+        opacity: 0.35,
+        size: 0.65,
+        softness: 0.8,
+        warmth: 0.4,
+        saturation: 0.9,
+        hueShift: 0.08,
+        blendMode: .softLight,
+        seed: 0,
+        falloffType: .cosine,
+        falloffDecay: 2.0,
+        depthLayers: 2,
+        depthFalloff: 0.25
+    )
+
+    /// CineStill-style halation leak
+    static let cinestillLeak = LightLeakConfig(
+        enabled: true,
+        type: .edgeLeft,
+        opacity: 0.55,
+        size: 0.5,
+        softness: 0.45,
+        warmth: 0.9,
+        saturation: 1.2,
+        hueShift: 0.0,
+        blendMode: .add,
+        seed: 0,
+        falloffType: .exponential,
+        falloffDecay: 4.0,
+        depthLayers: 3,
+        depthFalloff: 0.5
     )
 }
 

@@ -1123,6 +1123,27 @@ class FilterRenderer {
         params.centerBoost = config.centerBoost
         params.position = SIMD2<Float>(config.position.x, config.position.y)
         params.radius = config.radius
+
+        // Physics-based falloff
+        params.falloffType = Int32(config.falloffType.rawValue)
+        params.distanceScale = config.distanceScale
+
+        // Hot spot simulation
+        params.hotSpotEnabled = config.hotSpotEnabled ? 1 : 0
+        params.hotSpotSize = config.hotSpotSize
+        params.hotSpotIntensity = config.hotSpotIntensity
+
+        // Fresnel ring effects
+        params.fresnelEnabled = config.fresnelEnabled ? 1 : 0
+        params.fresnelRings = Int32(config.fresnelRings)
+        params.fresnelIntensity = config.fresnelIntensity
+        params.fresnelSpacing = config.fresnelSpacing
+
+        // Specular highlights
+        params.specularEnabled = config.specularEnabled ? 1 : 0
+        params.specularThreshold = config.specularThreshold
+        params.specularBoost = config.specularBoost
+
         return params
     }
 
@@ -1166,6 +1187,21 @@ class FilterRenderer {
         params.hueShift = config.hueShift
         params.blendMode = Int32(config.blendMode.rawValue)
         params.seed = config.seed
+
+        // Physics-based falloff
+        params.falloffType = Int32(config.falloffType.rawValue)
+        params.falloffDecay = config.falloffDecay
+
+        // Temporal animation
+        params.temporalEnabled = config.temporalEnabled ? 1 : 0
+        params.flickerSpeed = config.flickerSpeed
+        params.flickerIntensity = config.flickerIntensity
+        params.time = Float(CACurrentMediaTime())
+
+        // Multi-layer depth
+        params.depthLayers = Int32(config.depthLayers)
+        params.depthFalloff = config.depthFalloff
+
         return params
     }
 
