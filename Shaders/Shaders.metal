@@ -833,9 +833,9 @@ fragment float4 toneMappingFragment(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ★★★ NEW: FLASH EFFECT SHADER (Disposable Camera) ★★★
-// Simulates on-camera flash with realistic inverse-square falloff
-// and warm tungsten tint characteristic of cheap flash units
+// ★★★ FLASH EFFECT SHADER (Disposable Camera) - PHYSICS ENHANCED ★★★
+// Simulates on-camera flash with physics-based falloff, hot spots,
+// Fresnel rings, and specular highlights
 // ═══════════════════════════════════════════════════════════════
 
 fragment float4 flashFragment(
@@ -864,26 +864,79 @@ fragment float4 flashFragment(
     // Normalize distance by radius
     float normalizedDist = dist / p.radius;
 
-    // Inverse-square-like falloff (modified for artistic control)
-    // Using pow() for controllable falloff rate
-    float falloffFactor = 1.0 / pow(1.0 + normalizedDist * normalizedDist, p.falloff * 0.5);
+    // ═══════════════════════════════════════════════════════════
+    // Physics-based falloff calculation
+    // ═══════════════════════════════════════════════════════════
+    float falloffFactor = 0.0;
+    float scaledDist = normalizedDist * p.distanceScale;
 
-    // Apply center boost (hotspot effect)
+    switch (p.falloffType) {
+        case 0: // Power falloff (traditional)
+            falloffFactor = 1.0 / pow(1.0 + normalizedDist * normalizedDist, p.falloff * 0.5);
+            break;
+
+        case 1: // Inverse square law: I = I₀ / (1 + d²)
+            // True physics: light intensity decreases with square of distance
+            falloffFactor = 1.0 / (1.0 + scaledDist * scaledDist);
+            break;
+
+        case 2: // Exponential decay: I = I₀ × e^(-μd)
+            // Similar to Beer-Lambert for light through medium
+            falloffFactor = exp(-p.falloff * scaledDist);
+            break;
+
+        case 3: // Gaussian falloff (smooth bell curve)
+            // σ derived from radius for natural spread
+            float sigma = 0.5 / p.falloff;
+            falloffFactor = exp(-(normalizedDist * normalizedDist) / (2.0 * sigma * sigma));
+            break;
+    }
+
+    // Apply center boost
     float centerFalloff = exp(-normalizedDist * normalizedDist * 4.0);
     falloffFactor += centerFalloff * p.centerBoost;
 
+    // ═══════════════════════════════════════════════════════════
+    // Hot spot simulation - bright center of flash
+    // ═══════════════════════════════════════════════════════════
+    float hotSpotContrib = 0.0;
+    if (p.hotSpotEnabled != 0) {
+        // Tight gaussian for hot spot
+        float hotSpotNorm = dist / p.hotSpotSize;
+        hotSpotContrib = exp(-hotSpotNorm * hotSpotNorm * 2.0) * p.hotSpotIntensity;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Fresnel ring artifacts - lens reflection rings
+    // ═══════════════════════════════════════════════════════════
+    float fresnelContrib = 0.0;
+    if (p.fresnelEnabled != 0) {
+        for (int ring = 1; ring <= p.fresnelRings; ring++) {
+            // Ring position based on spacing
+            float ringRadius = float(ring) * p.fresnelSpacing;
+            float ringDist = abs(normalizedDist - ringRadius);
+
+            // Thin ring with soft edges
+            float ringWidth = 0.02 + float(ring) * 0.005;
+            float ringFactor = exp(-ringDist * ringDist / (2.0 * ringWidth * ringWidth));
+
+            // Rings fade with distance from center
+            float ringFade = 1.0 / float(ring);
+            fresnelContrib += ringFactor * ringFade;
+        }
+        fresnelContrib *= p.fresnelIntensity;
+    }
+
     // Calculate flash contribution
-    float flashStrength = falloffFactor * p.intensity;
+    float flashStrength = (falloffFactor + hotSpotContrib + fresnelContrib) * p.intensity;
 
     // Warm tint (simulates tungsten flash)
-    // Cheap flash units typically have a warm color temperature
     float3 warmTint = float3(1.0 + p.warmth, 1.0, 1.0 - p.warmth * 0.5);
 
     // Flash light addition (additive blending in linear space)
     float3 flashLight = float3(flashStrength) * warmTint;
 
     // Shadow lift in flash area (simulates fill light)
-    // Only affects darker areas, proportional to flash strength
     float luma = luminance(rgb);
     float shadowMask = 1.0 - smoothstep(0.0, 0.4, luma);
     float shadowLiftAmount = shadowMask * p.shadowLift * flashStrength;
@@ -891,8 +944,19 @@ fragment float4 flashFragment(
     // Apply flash
     rgb = rgb + flashLight + float3(shadowLiftAmount);
 
+    // ═══════════════════════════════════════════════════════════
+    // Specular highlights on bright surfaces
+    // ═══════════════════════════════════════════════════════════
+    if (p.specularEnabled != 0) {
+        // Find bright areas that would reflect flash
+        float specMask = smoothstep(p.specularThreshold, 1.0, luma);
+        // Specular is strongest near flash center
+        float specFalloff = exp(-normalizedDist * normalizedDist);
+        float specular = specMask * specFalloff * p.specularBoost * p.intensity;
+        rgb += float3(specular) * warmTint;
+    }
+
     // Soft highlight compression to prevent harsh clipping
-    // Maintains detail in bright areas while allowing natural bloom
     rgb = rgb / (rgb + 0.5);  // Simple Reinhard-style compression
     rgb = rgb * 1.5;           // Compensate for compression
 
@@ -1063,9 +1127,72 @@ fragment float4 lightLeakFragment(
         dist = length(delta);
     }
 
-    // Calculate leak intensity with soft falloff
+    // Calculate normalized distance
     float normalizedDist = dist / (p.size + 0.001);
-    float leakIntensity = 1.0 - smoothstep(0.0, 1.0 / p.softness, normalizedDist);
+
+    // ═══ PHYSICS-BASED FALLOFF ═══
+    // Apply falloff based on type: 0=gaussian, 1=exponential(Beer-Lambert), 2=linear, 3=cosine
+    float baseFalloff;
+    switch (p.falloffType) {
+        case 0: // Gaussian: e^(-x²/2σ²)
+            {
+                float sigma = 1.0 / (p.softness + 0.001);
+                baseFalloff = exp(-(normalizedDist * normalizedDist) / (2.0 * sigma * sigma));
+            }
+            break;
+        case 1: // Beer-Lambert exponential: I = I₀ × e^(-μd)
+            baseFalloff = exp(-p.falloffDecay * normalizedDist);
+            break;
+        case 2: // Linear
+            baseFalloff = max(0.0, 1.0 - normalizedDist / p.softness);
+            break;
+        case 3: // Cosine (soft edges)
+            baseFalloff = normalizedDist < 1.0 / p.softness ?
+                0.5 * (1.0 + cos(normalizedDist * p.softness * 3.14159)) : 0.0;
+            break;
+        default:
+            baseFalloff = 1.0 - smoothstep(0.0, 1.0 / p.softness, normalizedDist);
+    }
+
+    // ═══ MULTI-LAYER DEPTH SIMULATION ═══
+    // Simulate light penetrating film at different depths
+    float3 accumulatedColor = float3(0.0);
+    float accumulatedIntensity = 0.0;
+
+    int layers = clamp(p.depthLayers, 1, 4);
+    for (int layer = 0; layer < layers; layer++) {
+        float layerDepth = float(layer) / float(max(1, layers - 1));
+        float layerIntensity = baseFalloff * pow(1.0 - layerDepth * p.depthFalloff, 1.5);
+
+        // Each layer has slightly different hue (deeper = more red shift for warm leaks)
+        float layerHue = p.hueShift + layerDepth * 0.05;
+        float layerSaturation = p.saturation * (1.0 - layerDepth * 0.2);
+
+        float3 layerColor;
+        if (p.warmth >= 0.0) {
+            float hue = fract(layerHue + p.warmth * (0.1 + layerDepth * 0.05));
+            layerColor = hsl2rgb(float3(hue, layerSaturation, 0.6 - layerDepth * 0.1));
+        } else {
+            float hue = fract(layerHue + 0.5 - p.warmth * 0.2);
+            layerColor = hsl2rgb(float3(hue, layerSaturation * 0.9, 0.55 - layerDepth * 0.1));
+        }
+
+        accumulatedColor += layerColor * layerIntensity;
+        accumulatedIntensity += layerIntensity;
+    }
+
+    // Normalize accumulated values
+    float3 leakColor = layers > 0 ? accumulatedColor / float(layers) : float3(0.0);
+    float leakIntensity = layers > 0 ? accumulatedIntensity / float(layers) : 0.0;
+
+    // ═══ TEMPORAL ANIMATION (Flicker) ═══
+    if (p.temporalEnabled != 0) {
+        // Compound flicker: sine wave + noise for organic movement
+        float sineFlicker = sin(p.time * p.flickerSpeed * 6.28318) * 0.5;
+        float noiseFlicker = noise(float2(p.time * 0.5, float(effectiveSeed % 100)), effectiveSeed) * 0.35;
+        float compound = sineFlicker + noiseFlicker;
+        leakIntensity *= 1.0 + compound * p.flickerIntensity;
+    }
 
     // Add organic noise variation
     float noiseVal = noise(uv * 8.0 + float2(leakAngle), effectiveSeed);
@@ -1075,21 +1202,6 @@ fragment float4 lightLeakFragment(
     leakIntensity *= p.opacity;
 
     if (leakIntensity <= 0.0) return color;
-
-    // Generate leak color based on warmth and hue shift
-    // Base orange/red for warm, cyan/blue for cool
-    float3 leakColor;
-    float hue = p.hueShift;
-
-    if (p.warmth >= 0.0) {
-        // Warm: orange to red range (hue 0.0 - 0.1)
-        hue = fract(hue + p.warmth * 0.1);
-        leakColor = hsl2rgb(float3(hue, p.saturation, 0.6));
-    } else {
-        // Cool: cyan to magenta range (hue 0.5 - 0.9)
-        hue = fract(hue + 0.5 - p.warmth * 0.2);
-        leakColor = hsl2rgb(float3(hue, p.saturation * 0.9, 0.55));
-    }
 
     // Add variation to leak color
     float colorNoise = noise(uv * 4.0, effectiveSeed + 1);
