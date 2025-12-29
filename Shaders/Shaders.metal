@@ -1063,9 +1063,72 @@ fragment float4 lightLeakFragment(
         dist = length(delta);
     }
 
-    // Calculate leak intensity with soft falloff
+    // Calculate normalized distance
     float normalizedDist = dist / (p.size + 0.001);
-    float leakIntensity = 1.0 - smoothstep(0.0, 1.0 / p.softness, normalizedDist);
+
+    // ═══ PHYSICS-BASED FALLOFF ═══
+    // Apply falloff based on type: 0=gaussian, 1=exponential(Beer-Lambert), 2=linear, 3=cosine
+    float baseFalloff;
+    switch (p.falloffType) {
+        case 0: // Gaussian: e^(-x²/2σ²)
+            {
+                float sigma = 1.0 / (p.softness + 0.001);
+                baseFalloff = exp(-(normalizedDist * normalizedDist) / (2.0 * sigma * sigma));
+            }
+            break;
+        case 1: // Beer-Lambert exponential: I = I₀ × e^(-μd)
+            baseFalloff = exp(-p.falloffDecay * normalizedDist);
+            break;
+        case 2: // Linear
+            baseFalloff = max(0.0, 1.0 - normalizedDist / p.softness);
+            break;
+        case 3: // Cosine (soft edges)
+            baseFalloff = normalizedDist < 1.0 / p.softness ?
+                0.5 * (1.0 + cos(normalizedDist * p.softness * 3.14159)) : 0.0;
+            break;
+        default:
+            baseFalloff = 1.0 - smoothstep(0.0, 1.0 / p.softness, normalizedDist);
+    }
+
+    // ═══ MULTI-LAYER DEPTH SIMULATION ═══
+    // Simulate light penetrating film at different depths
+    float3 accumulatedColor = float3(0.0);
+    float accumulatedIntensity = 0.0;
+
+    int layers = clamp(p.depthLayers, 1, 4);
+    for (int layer = 0; layer < layers; layer++) {
+        float layerDepth = float(layer) / float(max(1, layers - 1));
+        float layerIntensity = baseFalloff * pow(1.0 - layerDepth * p.depthFalloff, 1.5);
+
+        // Each layer has slightly different hue (deeper = more red shift for warm leaks)
+        float layerHue = p.hueShift + layerDepth * 0.05;
+        float layerSaturation = p.saturation * (1.0 - layerDepth * 0.2);
+
+        float3 layerColor;
+        if (p.warmth >= 0.0) {
+            float hue = fract(layerHue + p.warmth * (0.1 + layerDepth * 0.05));
+            layerColor = hsl2rgb(float3(hue, layerSaturation, 0.6 - layerDepth * 0.1));
+        } else {
+            float hue = fract(layerHue + 0.5 - p.warmth * 0.2);
+            layerColor = hsl2rgb(float3(hue, layerSaturation * 0.9, 0.55 - layerDepth * 0.1));
+        }
+
+        accumulatedColor += layerColor * layerIntensity;
+        accumulatedIntensity += layerIntensity;
+    }
+
+    // Normalize accumulated values
+    float3 leakColor = layers > 0 ? accumulatedColor / float(layers) : float3(0.0);
+    float leakIntensity = layers > 0 ? accumulatedIntensity / float(layers) : 0.0;
+
+    // ═══ TEMPORAL ANIMATION (Flicker) ═══
+    if (p.temporalEnabled != 0) {
+        // Compound flicker: sine wave + noise for organic movement
+        float sineFlicker = sin(p.time * p.flickerSpeed * 6.28318) * 0.5;
+        float noiseFlicker = noise(float2(p.time * 0.5, float(effectiveSeed % 100)), effectiveSeed) * 0.35;
+        float compound = sineFlicker + noiseFlicker;
+        leakIntensity *= 1.0 + compound * p.flickerIntensity;
+    }
 
     // Add organic noise variation
     float noiseVal = noise(uv * 8.0 + float2(leakAngle), effectiveSeed);
@@ -1075,21 +1138,6 @@ fragment float4 lightLeakFragment(
     leakIntensity *= p.opacity;
 
     if (leakIntensity <= 0.0) return color;
-
-    // Generate leak color based on warmth and hue shift
-    // Base orange/red for warm, cyan/blue for cool
-    float3 leakColor;
-    float hue = p.hueShift;
-
-    if (p.warmth >= 0.0) {
-        // Warm: orange to red range (hue 0.0 - 0.1)
-        hue = fract(hue + p.warmth * 0.1);
-        leakColor = hsl2rgb(float3(hue, p.saturation, 0.6));
-    } else {
-        // Cool: cyan to magenta range (hue 0.5 - 0.9)
-        hue = fract(hue + 0.5 - p.warmth * 0.2);
-        leakColor = hsl2rgb(float3(hue, p.saturation * 0.9, 0.55));
-    }
 
     // Add variation to leak color
     float colorNoise = noise(uv * 4.0, effectiveSeed + 1);

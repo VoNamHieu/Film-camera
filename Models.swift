@@ -384,6 +384,14 @@ enum LightLeakBlendMode: Int, Codable, CaseIterable, Equatable {
     case softLight = 3    // Subtle
 }
 
+/// Physics-based falloff type for light leak
+enum LightLeakFalloff: Int, Codable, CaseIterable, Equatable {
+    case gaussian = 0       // Smooth gaussian falloff (default)
+    case exponential = 1    // Beer-Lambert physics-based decay
+    case linear = 2         // Simple linear falloff
+    case cosine = 3         // Cosine falloff (soft edges)
+}
+
 struct LightLeakConfig: Codable, Equatable {
     var enabled: Bool
     var type: LightLeakType           // Leak position/shape
@@ -396,6 +404,19 @@ struct LightLeakConfig: Codable, Equatable {
     var blendMode: LightLeakBlendMode // How leak blends with image
     var seed: UInt32                  // Random seed for variation
 
+    // NEW: Physics-based falloff
+    var falloffType: LightLeakFalloff // Falloff curve type
+    var falloffDecay: Float           // Decay rate for exponential (Beer-Lambert μ coefficient)
+
+    // NEW: Temporal animation (for video)
+    var temporalEnabled: Bool         // Enable flicker animation
+    var flickerSpeed: Float           // Flicker frequency (0.0-1.0)
+    var flickerIntensity: Float       // Flicker amount (0.0-0.5)
+
+    // NEW: Multi-layer depth simulation
+    var depthLayers: Int              // Number of color depth layers (1-4)
+    var depthFalloff: Float           // How much intensity drops per layer
+
     init(enabled: Bool = false,
          type: LightLeakType = .cornerTopRight,
          opacity: Float = 0.4,
@@ -405,7 +426,14 @@ struct LightLeakConfig: Codable, Equatable {
          saturation: Float = 1.0,
          hueShift: Float = 0.05,
          blendMode: LightLeakBlendMode = .screen,
-         seed: UInt32 = 0) {
+         seed: UInt32 = 0,
+         falloffType: LightLeakFalloff = .gaussian,
+         falloffDecay: Float = 2.5,
+         temporalEnabled: Bool = false,
+         flickerSpeed: Float = 0.3,
+         flickerIntensity: Float = 0.15,
+         depthLayers: Int = 1,
+         depthFalloff: Float = 0.3) {
         self.enabled = enabled
         self.type = type
         self.opacity = opacity
@@ -416,6 +444,13 @@ struct LightLeakConfig: Codable, Equatable {
         self.hueShift = hueShift
         self.blendMode = blendMode
         self.seed = seed
+        self.falloffType = falloffType
+        self.falloffDecay = falloffDecay
+        self.temporalEnabled = temporalEnabled
+        self.flickerSpeed = flickerSpeed
+        self.flickerIntensity = flickerIntensity
+        self.depthLayers = max(1, min(4, depthLayers))
+        self.depthFalloff = depthFalloff
     }
 
     // MARK: - Static Presets
@@ -496,6 +531,101 @@ struct LightLeakConfig: Codable, Equatable {
         saturation: 1.0,
         hueShift: 0.0,
         blendMode: .screen
+    )
+
+    // MARK: - Physics-Based Presets
+
+    /// Beer-Lambert exponential decay - realistic light penetration
+    static let physicsRealistic = LightLeakConfig(
+        enabled: true,
+        type: .edgeLeft,
+        opacity: 0.45,
+        size: 0.55,
+        softness: 0.5,
+        warmth: 0.65,
+        saturation: 1.0,
+        hueShift: 0.02,
+        blendMode: .screen,
+        seed: 0,
+        falloffType: .exponential,
+        falloffDecay: 3.0,
+        depthLayers: 3,
+        depthFalloff: 0.35
+    )
+
+    /// Multi-layer depth simulation - film edge exposure
+    static let filmEdgeMultiLayer = LightLeakConfig(
+        enabled: true,
+        type: .cornerTopRight,
+        opacity: 0.5,
+        size: 0.6,
+        softness: 0.55,
+        warmth: 0.7,
+        saturation: 1.1,
+        hueShift: 0.0,
+        blendMode: .screen,
+        seed: 0,
+        falloffType: .exponential,
+        falloffDecay: 2.5,
+        depthLayers: 4,
+        depthFalloff: 0.4
+    )
+
+    /// Animated flicker - for video/live view
+    static let animatedFlicker = LightLeakConfig(
+        enabled: true,
+        type: .edgeRight,
+        opacity: 0.4,
+        size: 0.5,
+        softness: 0.6,
+        warmth: 0.5,
+        saturation: 1.0,
+        hueShift: 0.05,
+        blendMode: .screen,
+        seed: 0,
+        falloffType: .gaussian,
+        falloffDecay: 2.5,
+        temporalEnabled: true,
+        flickerSpeed: 0.4,
+        flickerIntensity: 0.2,
+        depthLayers: 2,
+        depthFalloff: 0.3
+    )
+
+    /// Cosine falloff - very soft organic edges
+    static let softOrganic = LightLeakConfig(
+        enabled: true,
+        type: .cornerBottomRight,
+        opacity: 0.35,
+        size: 0.65,
+        softness: 0.8,
+        warmth: 0.4,
+        saturation: 0.9,
+        hueShift: 0.08,
+        blendMode: .softLight,
+        seed: 0,
+        falloffType: .cosine,
+        falloffDecay: 2.0,
+        depthLayers: 2,
+        depthFalloff: 0.25
+    )
+
+    /// CineStill-style halation leak
+    static let cinestillLeak = LightLeakConfig(
+        enabled: true,
+        type: .edgeLeft,
+        opacity: 0.55,
+        size: 0.5,
+        softness: 0.45,
+        warmth: 0.9,
+        saturation: 1.2,
+        hueShift: 0.0,
+        blendMode: .add,
+        seed: 0,
+        falloffType: .exponential,
+        falloffDecay: 4.0,
+        depthLayers: 3,
+        depthFalloff: 0.5
     )
 }
 

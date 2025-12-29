@@ -1166,6 +1166,21 @@ class FilterRenderer {
         params.hueShift = config.hueShift
         params.blendMode = Int32(config.blendMode.rawValue)
         params.seed = config.seed
+
+        // Physics-based falloff
+        params.falloffType = Int32(config.falloffType.rawValue)
+        params.falloffDecay = config.falloffDecay
+
+        // Temporal animation
+        params.temporalEnabled = config.temporalEnabled ? 1 : 0
+        params.flickerSpeed = config.flickerSpeed
+        params.flickerIntensity = config.flickerIntensity
+        params.time = Float(CACurrentMediaTime())
+
+        // Multi-layer depth
+        params.depthLayers = Int32(config.depthLayers)
+        params.depthFalloff = config.depthFalloff
+
         return params
     }
 
