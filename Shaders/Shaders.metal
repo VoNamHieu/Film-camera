@@ -833,9 +833,9 @@ fragment float4 toneMappingFragment(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ★★★ NEW: FLASH EFFECT SHADER (Disposable Camera) ★★★
-// Simulates on-camera flash with realistic inverse-square falloff
-// and warm tungsten tint characteristic of cheap flash units
+// ★★★ FLASH EFFECT SHADER (Disposable Camera) - PHYSICS ENHANCED ★★★
+// Simulates on-camera flash with physics-based falloff, hot spots,
+// Fresnel rings, and specular highlights
 // ═══════════════════════════════════════════════════════════════
 
 fragment float4 flashFragment(
@@ -864,26 +864,79 @@ fragment float4 flashFragment(
     // Normalize distance by radius
     float normalizedDist = dist / p.radius;
 
-    // Inverse-square-like falloff (modified for artistic control)
-    // Using pow() for controllable falloff rate
-    float falloffFactor = 1.0 / pow(1.0 + normalizedDist * normalizedDist, p.falloff * 0.5);
+    // ═══════════════════════════════════════════════════════════
+    // Physics-based falloff calculation
+    // ═══════════════════════════════════════════════════════════
+    float falloffFactor = 0.0;
+    float scaledDist = normalizedDist * p.distanceScale;
 
-    // Apply center boost (hotspot effect)
+    switch (p.falloffType) {
+        case 0: // Power falloff (traditional)
+            falloffFactor = 1.0 / pow(1.0 + normalizedDist * normalizedDist, p.falloff * 0.5);
+            break;
+
+        case 1: // Inverse square law: I = I₀ / (1 + d²)
+            // True physics: light intensity decreases with square of distance
+            falloffFactor = 1.0 / (1.0 + scaledDist * scaledDist);
+            break;
+
+        case 2: // Exponential decay: I = I₀ × e^(-μd)
+            // Similar to Beer-Lambert for light through medium
+            falloffFactor = exp(-p.falloff * scaledDist);
+            break;
+
+        case 3: // Gaussian falloff (smooth bell curve)
+            // σ derived from radius for natural spread
+            float sigma = 0.5 / p.falloff;
+            falloffFactor = exp(-(normalizedDist * normalizedDist) / (2.0 * sigma * sigma));
+            break;
+    }
+
+    // Apply center boost
     float centerFalloff = exp(-normalizedDist * normalizedDist * 4.0);
     falloffFactor += centerFalloff * p.centerBoost;
 
+    // ═══════════════════════════════════════════════════════════
+    // Hot spot simulation - bright center of flash
+    // ═══════════════════════════════════════════════════════════
+    float hotSpotContrib = 0.0;
+    if (p.hotSpotEnabled != 0) {
+        // Tight gaussian for hot spot
+        float hotSpotNorm = dist / p.hotSpotSize;
+        hotSpotContrib = exp(-hotSpotNorm * hotSpotNorm * 2.0) * p.hotSpotIntensity;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Fresnel ring artifacts - lens reflection rings
+    // ═══════════════════════════════════════════════════════════
+    float fresnelContrib = 0.0;
+    if (p.fresnelEnabled != 0) {
+        for (int ring = 1; ring <= p.fresnelRings; ring++) {
+            // Ring position based on spacing
+            float ringRadius = float(ring) * p.fresnelSpacing;
+            float ringDist = abs(normalizedDist - ringRadius);
+
+            // Thin ring with soft edges
+            float ringWidth = 0.02 + float(ring) * 0.005;
+            float ringFactor = exp(-ringDist * ringDist / (2.0 * ringWidth * ringWidth));
+
+            // Rings fade with distance from center
+            float ringFade = 1.0 / float(ring);
+            fresnelContrib += ringFactor * ringFade;
+        }
+        fresnelContrib *= p.fresnelIntensity;
+    }
+
     // Calculate flash contribution
-    float flashStrength = falloffFactor * p.intensity;
+    float flashStrength = (falloffFactor + hotSpotContrib + fresnelContrib) * p.intensity;
 
     // Warm tint (simulates tungsten flash)
-    // Cheap flash units typically have a warm color temperature
     float3 warmTint = float3(1.0 + p.warmth, 1.0, 1.0 - p.warmth * 0.5);
 
     // Flash light addition (additive blending in linear space)
     float3 flashLight = float3(flashStrength) * warmTint;
 
     // Shadow lift in flash area (simulates fill light)
-    // Only affects darker areas, proportional to flash strength
     float luma = luminance(rgb);
     float shadowMask = 1.0 - smoothstep(0.0, 0.4, luma);
     float shadowLiftAmount = shadowMask * p.shadowLift * flashStrength;
@@ -891,8 +944,19 @@ fragment float4 flashFragment(
     // Apply flash
     rgb = rgb + flashLight + float3(shadowLiftAmount);
 
+    // ═══════════════════════════════════════════════════════════
+    // Specular highlights on bright surfaces
+    // ═══════════════════════════════════════════════════════════
+    if (p.specularEnabled != 0) {
+        // Find bright areas that would reflect flash
+        float specMask = smoothstep(p.specularThreshold, 1.0, luma);
+        // Specular is strongest near flash center
+        float specFalloff = exp(-normalizedDist * normalizedDist);
+        float specular = specMask * specFalloff * p.specularBoost * p.intensity;
+        rgb += float3(specular) * warmTint;
+    }
+
     // Soft highlight compression to prevent harsh clipping
-    // Maintains detail in bright areas while allowing natural bloom
     rgb = rgb / (rgb + 0.5);  // Simple Reinhard-style compression
     rgb = rgb * 1.5;           // Compensate for compression
 

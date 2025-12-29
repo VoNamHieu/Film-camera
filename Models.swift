@@ -281,6 +281,14 @@ struct FlashPosition: Codable, Equatable {
     init(x: Float = 0.5, y: Float = 0.35) { self.x = x; self.y = y }
 }
 
+/// Physics-based flash falloff type
+enum FlashFalloffType: Int, Codable, CaseIterable, Equatable {
+    case power = 0          // Traditional power falloff (x^n)
+    case inverseSquare = 1  // Inverse square law: I = I₀ / d² (realistic)
+    case exponential = 2    // Exponential decay: I = I₀ × e^(-μd)
+    case gaussian = 3       // Gaussian falloff (smooth)
+}
+
 struct FlashConfig: Codable, Equatable {
     var enabled: Bool
     var intensity: Float           // Overall flash strength (0.0-1.0)
@@ -291,6 +299,26 @@ struct FlashConfig: Codable, Equatable {
     var position: FlashPosition    // Flash origin position (normalized 0-1)
     var radius: Float              // Flash radius as fraction of screen (0.3-1.0)
 
+    // NEW: Physics-based falloff
+    var falloffType: FlashFalloffType  // Type of light falloff physics
+    var distanceScale: Float           // Distance scale for inverse square (0.5-3.0)
+
+    // NEW: Hot spot simulation
+    var hotSpotEnabled: Bool           // Enable bright center spot
+    var hotSpotSize: Float             // Hot spot radius (0.05-0.3)
+    var hotSpotIntensity: Float        // Hot spot brightness boost (0.0-1.0)
+
+    // NEW: Fresnel ring effects
+    var fresnelEnabled: Bool           // Enable Fresnel ring artifacts
+    var fresnelRings: Int              // Number of rings (1-5)
+    var fresnelIntensity: Float        // Ring visibility (0.0-0.5)
+    var fresnelSpacing: Float          // Ring spacing (0.1-0.5)
+
+    // NEW: Specular highlights
+    var specularEnabled: Bool          // Enable specular catch lights
+    var specularThreshold: Float       // Brightness threshold (0.7-1.0)
+    var specularBoost: Float           // Specular intensity (0.0-1.0)
+
     init(enabled: Bool = false,
          intensity: Float = 0.6,
          falloff: Float = 2.0,
@@ -298,7 +326,19 @@ struct FlashConfig: Codable, Equatable {
          shadowLift: Float = 0.15,
          centerBoost: Float = 0.2,
          position: FlashPosition = FlashPosition(),
-         radius: Float = 0.7) {
+         radius: Float = 0.7,
+         falloffType: FlashFalloffType = .power,
+         distanceScale: Float = 1.0,
+         hotSpotEnabled: Bool = false,
+         hotSpotSize: Float = 0.1,
+         hotSpotIntensity: Float = 0.4,
+         fresnelEnabled: Bool = false,
+         fresnelRings: Int = 2,
+         fresnelIntensity: Float = 0.15,
+         fresnelSpacing: Float = 0.2,
+         specularEnabled: Bool = false,
+         specularThreshold: Float = 0.85,
+         specularBoost: Float = 0.3) {
         self.enabled = enabled
         self.intensity = intensity
         self.falloff = falloff
@@ -307,9 +347,21 @@ struct FlashConfig: Codable, Equatable {
         self.centerBoost = centerBoost
         self.position = position
         self.radius = radius
+        self.falloffType = falloffType
+        self.distanceScale = distanceScale
+        self.hotSpotEnabled = hotSpotEnabled
+        self.hotSpotSize = hotSpotSize
+        self.hotSpotIntensity = hotSpotIntensity
+        self.fresnelEnabled = fresnelEnabled
+        self.fresnelRings = max(1, min(5, fresnelRings))
+        self.fresnelIntensity = fresnelIntensity
+        self.fresnelSpacing = fresnelSpacing
+        self.specularEnabled = specularEnabled
+        self.specularThreshold = specularThreshold
+        self.specularBoost = specularBoost
     }
 
-    // MARK: - Static Presets
+    // MARK: - Static Presets (Basic)
 
     /// Harsh flash - typical disposable camera
     static let harsh = FlashConfig(
@@ -357,6 +409,102 @@ struct FlashConfig: Codable, Equatable {
         centerBoost: 0.3,
         position: FlashPosition(x: 0.5, y: 0.25),
         radius: 0.5
+    )
+
+    // MARK: - Physics-Based Presets
+
+    /// Realistic inverse square law falloff - true physics simulation
+    static let physicsRealistic = FlashConfig(
+        enabled: true,
+        intensity: 0.65,
+        falloff: 2.0,
+        warmth: 0.1,
+        shadowLift: 0.12,
+        centerBoost: 0.15,
+        position: FlashPosition(x: 0.5, y: 0.35),
+        radius: 0.75,
+        falloffType: .inverseSquare,
+        distanceScale: 1.5,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.08,
+        hotSpotIntensity: 0.35
+    )
+
+    /// Hot spot flash - bright center with fast falloff
+    static let hotSpot = FlashConfig(
+        enabled: true,
+        intensity: 0.75,
+        falloff: 2.2,
+        warmth: 0.06,
+        shadowLift: 0.1,
+        centerBoost: 0.3,
+        position: FlashPosition(x: 0.5, y: 0.32),
+        radius: 0.65,
+        falloffType: .gaussian,
+        distanceScale: 1.2,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.12,
+        hotSpotIntensity: 0.5
+    )
+
+    /// Fresnel ring flash - lens artifact simulation
+    static let fresnelRing = FlashConfig(
+        enabled: true,
+        intensity: 0.6,
+        falloff: 2.0,
+        warmth: 0.08,
+        shadowLift: 0.15,
+        centerBoost: 0.2,
+        position: FlashPosition(x: 0.5, y: 0.35),
+        radius: 0.7,
+        falloffType: .power,
+        distanceScale: 1.0,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.1,
+        hotSpotIntensity: 0.3,
+        fresnelEnabled: true,
+        fresnelRings: 3,
+        fresnelIntensity: 0.2,
+        fresnelSpacing: 0.15
+    )
+
+    /// Professional strobe - even illumination with specular
+    static let strobe = FlashConfig(
+        enabled: true,
+        intensity: 0.55,
+        falloff: 1.6,
+        warmth: 0.0,
+        shadowLift: 0.2,
+        centerBoost: 0.1,
+        position: FlashPosition(x: 0.5, y: 0.4),
+        radius: 0.9,
+        falloffType: .gaussian,
+        distanceScale: 2.0,
+        hotSpotEnabled: false,
+        specularEnabled: true,
+        specularThreshold: 0.8,
+        specularBoost: 0.4
+    )
+
+    /// On-camera disposable with hot spot and rings
+    static let disposablePhysics = FlashConfig(
+        enabled: true,
+        intensity: 0.7,
+        falloff: 2.3,
+        warmth: 0.12,
+        shadowLift: 0.08,
+        centerBoost: 0.25,
+        position: FlashPosition(x: 0.48, y: 0.28),
+        radius: 0.6,
+        falloffType: .inverseSquare,
+        distanceScale: 1.3,
+        hotSpotEnabled: true,
+        hotSpotSize: 0.1,
+        hotSpotIntensity: 0.4,
+        fresnelEnabled: true,
+        fresnelRings: 2,
+        fresnelIntensity: 0.12,
+        fresnelSpacing: 0.18
     )
 }
 

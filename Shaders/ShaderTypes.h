@@ -176,8 +176,8 @@ typedef struct {
     float outputAspect;     // Output drawable aspect ratio (width/height)
 } AspectScaleParams;
 
-// ★★★ NEW: FLASH EFFECT (Disposable Camera) ★★★
-// Simulates on-camera flash with realistic falloff and warm tint
+// ★★★ FLASH EFFECT (Disposable Camera) - PHYSICS ENHANCED ★★★
+// Simulates on-camera flash with physics-based falloff, hot spots, and Fresnel rings
 typedef struct {
     int enabled;
     float intensity;        // Overall flash strength (0.0-1.0)
@@ -187,6 +187,26 @@ typedef struct {
     float centerBoost;      // Extra brightness at center (0.0-0.5)
     vector_float2 position; // Flash origin (normalized 0-1)
     float radius;           // Flash radius (0.3-1.0)
+
+    // Physics-based falloff
+    int falloffType;        // 0=power, 1=inverseSquare, 2=exponential, 3=gaussian
+    float distanceScale;    // Distance scale for inverse square (0.5-3.0)
+
+    // Hot spot simulation
+    int hotSpotEnabled;     // Enable bright center spot
+    float hotSpotSize;      // Hot spot radius (0.05-0.3)
+    float hotSpotIntensity; // Hot spot brightness boost (0.0-1.0)
+
+    // Fresnel ring effects
+    int fresnelEnabled;     // Enable Fresnel ring artifacts
+    int fresnelRings;       // Number of rings (1-5)
+    float fresnelIntensity; // Ring visibility (0.0-0.5)
+    float fresnelSpacing;   // Ring spacing (0.1-0.5)
+
+    // Specular highlights
+    int specularEnabled;    // Enable specular catch lights
+    float specularThreshold;// Brightness threshold (0.7-1.0)
+    float specularBoost;    // Specular intensity (0.0-1.0)
 } FlashParams;
 
 // ★★★ NEW: LIGHT LEAK EFFECT (Procedural + Physics-Based) ★★★
