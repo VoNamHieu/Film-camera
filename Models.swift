@@ -8,7 +8,7 @@ import SwiftUI
 // MARK: - Filter Category
 
 enum FilterCategory: String, CaseIterable, Codable, Equatable {
-    case professional, slide, consumer, cinema, blackAndWhite, instant, disposable, food, night, creative
+    case professional, slide, consumer, cinema, blackAndWhite, instant, disposable, food, night, creative, vhs, digicam
 }
 
 // MARK: - Core Adjustments
@@ -1120,6 +1120,337 @@ struct FilmStock: Codable, Equatable {
     }
 }
 
+// MARK: - VHS Effects
+
+/// Scanline configuration for VHS effect
+struct ScanlineConfig: Codable, Equatable {
+    var enabled: Bool
+    var intensity: Float           // Line visibility (0.0-1.0)
+    var density: Float             // Lines per screen (0.5-2.0)
+    var flickerSpeed: Float        // Flicker rate (0.0-1.0)
+    var flickerIntensity: Float    // Flicker amount (0.0-1.0)
+
+    init(enabled: Bool = false,
+         intensity: Float = 0.15,
+         density: Float = 1.0,
+         flickerSpeed: Float = 0.3,
+         flickerIntensity: Float = 0.1) {
+        self.enabled = enabled
+        self.intensity = intensity
+        self.density = density
+        self.flickerSpeed = flickerSpeed
+        self.flickerIntensity = flickerIntensity
+    }
+}
+
+/// Color bleed/smear for VHS effect
+struct ColorBleedConfig: Codable, Equatable {
+    var enabled: Bool
+    var intensity: Float           // Overall bleed amount (0.0-1.0)
+    var redShift: Float            // Red channel offset (0.0-0.02)
+    var blueShift: Float           // Blue channel offset (0.0-0.02)
+    var verticalBleed: Float       // Vertical smearing (0.0-1.0)
+
+    init(enabled: Bool = false,
+         intensity: Float = 0.3,
+         redShift: Float = 0.005,
+         blueShift: Float = 0.003,
+         verticalBleed: Float = 0.2) {
+        self.enabled = enabled
+        self.intensity = intensity
+        self.redShift = redShift
+        self.blueShift = blueShift
+        self.verticalBleed = verticalBleed
+    }
+}
+
+/// VHS tape tracking distortion
+struct TrackingConfig: Codable, Equatable {
+    var enabled: Bool
+    var intensity: Float           // Distortion strength (0.0-1.0)
+    var speed: Float               // Roll speed (0.0-2.0)
+    var noise: Float               // Random jitter (0.0-1.0)
+    var waveHeight: Float          // Wave distortion height (0.0-0.1)
+
+    init(enabled: Bool = false,
+         intensity: Float = 0.2,
+         speed: Float = 0.5,
+         noise: Float = 0.3,
+         waveHeight: Float = 0.02) {
+        self.enabled = enabled
+        self.intensity = intensity
+        self.speed = speed
+        self.noise = noise
+        self.waveHeight = waveHeight
+    }
+}
+
+/// Combined VHS effects configuration
+struct VHSEffectsConfig: Codable, Equatable {
+    var enabled: Bool
+    var scanlines: ScanlineConfig
+    var colorBleed: ColorBleedConfig
+    var tracking: TrackingConfig
+    var noiseIntensity: Float      // Static noise (0.0-1.0)
+    var saturationLoss: Float      // Color fade (0.0-0.5)
+    var sharpnessLoss: Float       // Softening (0.0-1.0)
+    var dateOverlay: Bool          // Show VHS-style date
+
+    init(enabled: Bool = false,
+         scanlines: ScanlineConfig = ScanlineConfig(),
+         colorBleed: ColorBleedConfig = ColorBleedConfig(),
+         tracking: TrackingConfig = TrackingConfig(),
+         noiseIntensity: Float = 0.15,
+         saturationLoss: Float = 0.1,
+         sharpnessLoss: Float = 0.2,
+         dateOverlay: Bool = false) {
+        self.enabled = enabled
+        self.scanlines = scanlines
+        self.colorBleed = colorBleed
+        self.tracking = tracking
+        self.noiseIntensity = noiseIntensity
+        self.saturationLoss = saturationLoss
+        self.sharpnessLoss = sharpnessLoss
+        self.dateOverlay = dateOverlay
+    }
+
+    // MARK: - Static Presets
+
+    /// Clean VHS - minimal artifacts
+    static let clean = VHSEffectsConfig(
+        enabled: true,
+        scanlines: ScanlineConfig(enabled: true, intensity: 0.1, density: 1.0),
+        colorBleed: ColorBleedConfig(enabled: true, intensity: 0.2),
+        tracking: TrackingConfig(enabled: false),
+        noiseIntensity: 0.08,
+        saturationLoss: 0.05,
+        sharpnessLoss: 0.1
+    )
+
+    /// Worn tape - moderate degradation
+    static let wornTape = VHSEffectsConfig(
+        enabled: true,
+        scanlines: ScanlineConfig(enabled: true, intensity: 0.2, flickerIntensity: 0.15),
+        colorBleed: ColorBleedConfig(enabled: true, intensity: 0.4, verticalBleed: 0.3),
+        tracking: TrackingConfig(enabled: true, intensity: 0.15),
+        noiseIntensity: 0.2,
+        saturationLoss: 0.15,
+        sharpnessLoss: 0.25
+    )
+
+    /// Damaged tape - heavy artifacts
+    static let damagedTape = VHSEffectsConfig(
+        enabled: true,
+        scanlines: ScanlineConfig(enabled: true, intensity: 0.3, flickerIntensity: 0.25),
+        colorBleed: ColorBleedConfig(enabled: true, intensity: 0.6, redShift: 0.01, blueShift: 0.008, verticalBleed: 0.5),
+        tracking: TrackingConfig(enabled: true, intensity: 0.35, noise: 0.5, waveHeight: 0.04),
+        noiseIntensity: 0.35,
+        saturationLoss: 0.25,
+        sharpnessLoss: 0.4
+    )
+
+    /// Camcorder - fresh recording look
+    static let camcorder = VHSEffectsConfig(
+        enabled: true,
+        scanlines: ScanlineConfig(enabled: true, intensity: 0.12, density: 1.2),
+        colorBleed: ColorBleedConfig(enabled: true, intensity: 0.25),
+        tracking: TrackingConfig(enabled: false),
+        noiseIntensity: 0.1,
+        saturationLoss: 0.08,
+        sharpnessLoss: 0.15,
+        dateOverlay: true
+    )
+}
+
+// MARK: - Digicam Effects
+
+/// Digital camera noise (JPEG artifacts, banding)
+struct DigitalNoiseConfig: Codable, Equatable {
+    var enabled: Bool
+    var intensity: Float           // Overall noise (0.0-1.0)
+    var luminanceNoise: Float      // Brightness noise (0.0-1.0)
+    var chrominanceNoise: Float    // Color noise (0.0-1.0)
+    var banding: Float             // Horizontal banding (0.0-1.0)
+    var hotPixels: Float           // Random bright pixels (0.0-0.1)
+
+    init(enabled: Bool = false,
+         intensity: Float = 0.2,
+         luminanceNoise: Float = 0.15,
+         chrominanceNoise: Float = 0.1,
+         banding: Float = 0.05,
+         hotPixels: Float = 0.01) {
+        self.enabled = enabled
+        self.intensity = intensity
+        self.luminanceNoise = luminanceNoise
+        self.chrominanceNoise = chrominanceNoise
+        self.banding = banding
+        self.hotPixels = hotPixels
+    }
+}
+
+/// Low resolution / pixelation effect
+struct PixelationConfig: Codable, Equatable {
+    var enabled: Bool
+    var resolution: Float          // Target resolution scale (0.25-1.0)
+    var dithering: Float           // Dithering amount (0.0-1.0)
+    var colorDepth: Int            // Bits per channel (4-8)
+
+    init(enabled: Bool = false,
+         resolution: Float = 1.0,
+         dithering: Float = 0.0,
+         colorDepth: Int = 8) {
+        self.enabled = enabled
+        self.resolution = resolution
+        self.dithering = dithering
+        self.colorDepth = colorDepth
+    }
+}
+
+/// Combined digicam effects
+struct DigicamEffectsConfig: Codable, Equatable {
+    var enabled: Bool
+    var digitalNoise: DigitalNoiseConfig
+    var jpegArtifacts: Float       // JPEG compression artifacts (0.0-1.0)
+    var whiteBalance: Float        // Auto WB shift (-1.0 to 1.0)
+    var autoExposure: Float        // Over/under exposure (-0.5 to 0.5)
+    var sharpening: Float          // Digital sharpening (0.0-1.0)
+    var timestamp: Bool            // Show digicam timestamp
+
+    init(enabled: Bool = false,
+         digitalNoise: DigitalNoiseConfig = DigitalNoiseConfig(),
+         jpegArtifacts: Float = 0.0,
+         whiteBalance: Float = 0.0,
+         autoExposure: Float = 0.0,
+         sharpening: Float = 0.3,
+         timestamp: Bool = false) {
+        self.enabled = enabled
+        self.digitalNoise = digitalNoise
+        self.jpegArtifacts = jpegArtifacts
+        self.whiteBalance = whiteBalance
+        self.autoExposure = autoExposure
+        self.sharpening = sharpening
+        self.timestamp = timestamp
+    }
+
+    // MARK: - Static Presets
+
+    /// Canon PowerShot style
+    static let powershot = DigicamEffectsConfig(
+        enabled: true,
+        digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.15, chrominanceNoise: 0.12),
+        jpegArtifacts: 0.1,
+        whiteBalance: 0.05,
+        sharpening: 0.4
+    )
+
+    /// Sony Cybershot style
+    static let cybershot = DigicamEffectsConfig(
+        enabled: true,
+        digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.2, luminanceNoise: 0.18, banding: 0.08),
+        jpegArtifacts: 0.15,
+        whiteBalance: -0.05,
+        sharpening: 0.35,
+        timestamp: true
+    )
+
+    /// Fuji FinePix style
+    static let finepix = DigicamEffectsConfig(
+        enabled: true,
+        digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.12, chrominanceNoise: 0.08),
+        jpegArtifacts: 0.08,
+        whiteBalance: 0.1,
+        sharpening: 0.45
+    )
+}
+
+// MARK: - Film Strip Effects
+
+/// Film strip perforation style
+enum PerforationStyle: String, Codable, CaseIterable, Equatable {
+    case none           // No perforations
+    case standard35mm   // Standard 35mm film
+    case cinema         // Cinema style (larger)
+    case super8         // Super 8 style
+}
+
+/// Film strip border configuration
+struct FilmStripEffectsConfig: Codable, Equatable {
+    var enabled: Bool
+    var perforations: PerforationStyle    // Perforation type
+    var borderColor: ColorTint            // Border/sprocket color
+    var borderOpacity: Float              // Border visibility (0.0-1.0)
+    var frameLineWidth: Float             // Frame line thickness (0.0-0.02)
+    var frameLineOpacity: Float           // Frame line visibility (0.0-1.0)
+    var rebateVisible: Bool               // Show rebate (edge info)
+    var rebateText: String                // Text on rebate (film name)
+    var frameNumber: Bool                 // Show frame numbers
+    var kodakStyle: Bool                  // Orange Kodak rebate style
+
+    init(enabled: Bool = false,
+         perforations: PerforationStyle = .none,
+         borderColor: ColorTint = ColorTint(r: 0.1, g: 0.08, b: 0.06),
+         borderOpacity: Float = 0.9,
+         frameLineWidth: Float = 0.003,
+         frameLineOpacity: Float = 0.7,
+         rebateVisible: Bool = false,
+         rebateText: String = "",
+         frameNumber: Bool = false,
+         kodakStyle: Bool = false) {
+        self.enabled = enabled
+        self.perforations = perforations
+        self.borderColor = borderColor
+        self.borderOpacity = borderOpacity
+        self.frameLineWidth = frameLineWidth
+        self.frameLineOpacity = frameLineOpacity
+        self.rebateVisible = rebateVisible
+        self.rebateText = rebateText
+        self.frameNumber = frameNumber
+        self.kodakStyle = kodakStyle
+    }
+
+    // MARK: - Static Presets
+
+    /// 35mm negative with Kodak rebate
+    static let kodak35mm = FilmStripEffectsConfig(
+        enabled: true,
+        perforations: .standard35mm,
+        borderColor: ColorTint(r: 0.12, g: 0.08, b: 0.04),
+        rebateVisible: true,
+        rebateText: "KODAK 400TX",
+        frameNumber: true,
+        kodakStyle: true
+    )
+
+    /// Fuji film style
+    static let fuji35mm = FilmStripEffectsConfig(
+        enabled: true,
+        perforations: .standard35mm,
+        borderColor: ColorTint(r: 0.08, g: 0.1, b: 0.06),
+        rebateVisible: true,
+        rebateText: "FUJI SUPERIA",
+        frameNumber: true,
+        kodakStyle: false
+    )
+
+    /// Cinema film style
+    static let cinemaFilm = FilmStripEffectsConfig(
+        enabled: true,
+        perforations: .cinema,
+        borderColor: ColorTint(r: 0.05, g: 0.05, b: 0.05),
+        frameLineWidth: 0.004,
+        rebateVisible: false
+    )
+
+    /// Super 8 home movie style
+    static let super8 = FilmStripEffectsConfig(
+        enabled: true,
+        perforations: .super8,
+        borderColor: ColorTint(r: 0.15, g: 0.1, b: 0.05),
+        borderOpacity: 0.85,
+        rebateVisible: false
+    )
+}
+
 // MARK: - FILTER PRESET (Root Object)
 
 struct FilterPreset: Codable, Identifiable, Equatable {
@@ -1144,6 +1475,11 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var bw: BWConfig
     var overlays: OverlaysConfig
 
+    // New effect systems
+    var vhsEffects: VHSEffectsConfig
+    var digicamEffects: DigicamEffectsConfig
+    var filmStripEffects: FilmStripEffectsConfig
+
     var skinToneProtection: SkinToneProtection
     var toneMapping: ToneMapping
     var filmStock: FilmStock
@@ -1159,6 +1495,9 @@ struct FilterPreset: Codable, Identifiable, Equatable {
          lightLeak: LightLeakConfig = LightLeakConfig(), dateStamp: DateStampConfig = DateStampConfig(),
          ccdBloom: CCDBloomConfig = CCDBloomConfig(), bw: BWConfig = BWConfig(),
          overlays: OverlaysConfig = OverlaysConfig(),
+         vhsEffects: VHSEffectsConfig = VHSEffectsConfig(),
+         digicamEffects: DigicamEffectsConfig = DigicamEffectsConfig(),
+         filmStripEffects: FilmStripEffectsConfig = FilmStripEffectsConfig(),
          skinToneProtection: SkinToneProtection = SkinToneProtection(),
          toneMapping: ToneMapping = ToneMapping(), filmStock: FilmStock = FilmStock()) {
 
@@ -1170,6 +1509,7 @@ struct FilterPreset: Codable, Identifiable, Equatable {
         self.grain = grain; self.bloom = bloom; self.vignette = vignette; self.halation = halation
         self.instantFrame = instantFrame; self.flash = flash; self.lightLeak = lightLeak; self.dateStamp = dateStamp
         self.ccdBloom = ccdBloom; self.bw = bw; self.overlays = overlays
+        self.vhsEffects = vhsEffects; self.digicamEffects = digicamEffects; self.filmStripEffects = filmStripEffects
         self.skinToneProtection = skinToneProtection
         self.toneMapping = toneMapping; self.filmStock = filmStock
     }

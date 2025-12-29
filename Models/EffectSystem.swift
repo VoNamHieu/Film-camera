@@ -428,6 +428,8 @@ enum CameraCategory: String, CaseIterable, Codable {
     case food
     case night
     case creative
+    case vhs
+    case digicam
 
     var displayName: String {
         switch self {
@@ -441,6 +443,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: return "Food & Lifestyle"
         case .night: return "Night & Neon"
         case .creative: return "Creative"
+        case .vhs: return "VHS & Camcorder"
+        case .digicam: return "Digital Camera"
         }
     }
 
@@ -456,6 +460,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: return "fork.knife"
         case .night: return "moon.stars.fill"
         case .creative: return "paintbrush.fill"
+        case .vhs: return "video.fill"
+        case .digicam: return "camera.compact"
         }
     }
 
@@ -472,6 +478,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: self = .food
         case .night: self = .night
         case .creative: self = .creative
+        case .vhs: self = .vhs
+        case .digicam: self = .digicam
         }
     }
 
@@ -488,6 +496,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: return .food
         case .night: return .night
         case .creative: return .creative
+        case .vhs: return .vhs
+        case .digicam: return .digicam
         }
     }
 }
@@ -1173,6 +1183,20 @@ extension CameraCategory {
                 .grain: .compound(values: ["enabled": 1.0, "intensity": 0.14, "size": 1.08, "softness": 0.55]),
                 .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.06, "threshold": 0.75, "radius": 14]),
                 .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.12, "roundness": 0.78, "feather": 0.62])
+            ]
+
+        case .vhs:
+            return [
+                .grain: .compound(values: ["enabled": 1.0, "intensity": 0.15, "size": 1.1, "softness": 0.5]),
+                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.08, "threshold": 0.70, "radius": 15]),
+                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.18, "roundness": 0.70, "feather": 0.60])
+            ]
+
+        case .digicam:
+            return [
+                .grain: .compound(values: ["enabled": 0.0, "intensity": 0.0, "size": 1.0, "softness": 0.5]),
+                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.10, "threshold": 0.68, "radius": 14]),
+                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.12, "roundness": 0.85, "feather": 0.70])
             ]
         }
     }

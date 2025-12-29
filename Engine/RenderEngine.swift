@@ -103,6 +103,15 @@ class RenderEngine {
     // ★★★ NEW: Overlays Pipeline (Dust & Scratches) ★★★
     private(set) var overlaysPipeline: MTLRenderPipelineState?
 
+    // ★★★ NEW: VHS Effects Pipeline ★★★
+    private(set) var vhsEffectsPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Digicam Effects Pipeline ★★★
+    private(set) var digicamEffectsPipeline: MTLRenderPipelineState?
+
+    // ★★★ NEW: Film Strip Pipeline ★★★
+    private(set) var filmStripPipeline: MTLRenderPipelineState?
+
     // LUT textures cache
     private var lutCache: [String: MTLTexture] = [:]
     private let lutCacheLock = NSLock()
@@ -215,6 +224,15 @@ class RenderEngine {
 
         // ★★★ NEW: Overlays Pipeline (Dust & Scratches) ★★★
         overlaysPipeline = createPipeline(vertex: vertexFunction, fragmentName: "overlaysFragment")
+
+        // ★★★ NEW: VHS Effects Pipeline ★★★
+        vhsEffectsPipeline = createPipeline(vertex: vertexFunction, fragmentName: "vhsEffectsFragment")
+
+        // ★★★ NEW: Digicam Effects Pipeline ★★★
+        digicamEffectsPipeline = createPipeline(vertex: vertexFunction, fragmentName: "digicamEffectsFragment")
+
+        // ★★★ NEW: Film Strip Pipeline ★★★
+        filmStripPipeline = createPipeline(vertex: vertexFunction, fragmentName: "filmStripFragment")
 
         printPipelineStatus()
     }
@@ -359,6 +377,15 @@ class RenderEngine {
         print("")
         print("   Overlays Pipeline:")
         print("      overlays:        \(overlaysPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   VHS Effects Pipeline:")
+        print("      vhsEffects:      \(vhsEffectsPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Digicam Effects Pipeline:")
+        print("      digicamEffects:  \(digicamEffectsPipeline != nil ? "✅" : "❌")")
+        print("")
+        print("   Film Strip Pipeline:")
+        print("      filmStrip:       \(filmStripPipeline != nil ? "✅" : "❌")")
         print("═══════════════════════════════════════════════════════════════")
         
         if !initializationErrors.isEmpty {

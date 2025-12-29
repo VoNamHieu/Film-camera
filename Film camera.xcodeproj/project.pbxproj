@@ -100,7 +100,7 @@
 			children = (
 				04D5CB1F2EF500EE0081976E /* RGBCurves.swift */,
 				04D5CB1D2EF500EA0081976E /* FilterPreset+RGBCurves.swift */,
-				04D5CB222EF500EE0081976E /* VIew */,
+				04D5CB222EF500EE0081976E /* View */,
 				043960B22EF3BA0A00D764A0 /* Film-camera-Bridging-Header.h */,
 				04C280922EF2AFB4006E43C6 /* Models.swift */,
 				04C280392EF28FD3006E43C6 /* Resources */,
@@ -167,13 +167,13 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		04D5CB222EF500EE0081976E /* VIew */ = {
+		04D5CB222EF500EE0081976E /* View */ = {
 			isa = PBXGroup;
 			children = (
 				04D5CB202EF500EE0081976E /* ContentView.swift */,
 				04D5CB212EF500EE0081976E /* PhotoEditorView.swift */,
 			);
-			path = VIew;
+			path = View;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

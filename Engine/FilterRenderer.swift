@@ -664,7 +664,37 @@ class FilterRenderer {
             }
         }
 
-        // PASS 17: Instant Frame
+        // PASS 17: VHS Effects (scanlines, color bleed, tracking)
+        if preset.vhsEffects.enabled {
+            if let result = applyVHSEffects(input: currentInput, config: preset.vhsEffects, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("VHS✓")
+            } else {
+                passResults.append("VHS✗")
+            }
+        }
+
+        // PASS 18: Digicam Effects (digital noise, JPEG artifacts, sharpening)
+        if preset.digicamEffects.enabled {
+            if let result = applyDigicamEffects(input: currentInput, config: preset.digicamEffects, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("Digicam✓")
+            } else {
+                passResults.append("Digicam✗")
+            }
+        }
+
+        // PASS 19: Film Strip Effects (borders, perforations)
+        if preset.filmStripEffects.enabled {
+            if let result = applyFilmStripEffects(input: currentInput, config: preset.filmStripEffects, commandBuffer: commandBuffer) {
+                currentInput = result
+                passResults.append("FilmStrip✓")
+            } else {
+                passResults.append("FilmStrip✗")
+            }
+        }
+
+        // PASS 20: Instant Frame
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -1426,6 +1456,180 @@ class FilterRenderer {
         // Global
         params.seed = config.animate ? UInt32.random(in: 0..<100000) : config.seed
         params.aspectRatio = Float(textureWidth) / Float(textureHeight)
+
+        return params
+    }
+
+    // MARK: - ★★★ VHS Effects ★★★
+
+    private func applyVHSEffects(input: MTLTexture, config: VHSEffectsConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.vhsEffectsPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.vhsEffectsPipeline == nil {
+                print("❌ FilterRenderer: vhsEffectsPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareVHSEffectsParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<VHSEffectsParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareVHSEffectsParams(_ config: VHSEffectsConfig) -> VHSEffectsParams {
+        var params = VHSEffectsParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Scanlines
+        params.scanlinesEnabled = config.scanlines.enabled ? 1 : 0
+        params.scanlinesIntensity = config.scanlines.intensity
+        params.scanlinesDensity = config.scanlines.density
+        params.scanlinesFlickerSpeed = config.scanlines.flickerSpeed
+        params.scanlinesFlickerIntensity = config.scanlines.flickerIntensity
+
+        // Color Bleed
+        params.colorBleedEnabled = config.colorBleed.enabled ? 1 : 0
+        params.colorBleedIntensity = config.colorBleed.intensity
+        params.colorBleedRedShift = config.colorBleed.redShift
+        params.colorBleedBlueShift = config.colorBleed.blueShift
+        params.colorBleedVertical = config.colorBleed.verticalBleed
+
+        // Tracking
+        params.trackingEnabled = config.tracking.enabled ? 1 : 0
+        params.trackingIntensity = config.tracking.intensity
+        params.trackingSpeed = config.tracking.speed
+        params.trackingNoise = config.tracking.noise
+        params.trackingWaveHeight = config.tracking.waveHeight
+
+        // Global effects
+        params.noiseIntensity = config.noiseIntensity
+        params.saturationLoss = config.saturationLoss
+        params.sharpnessLoss = config.sharpnessLoss
+
+        // Animation time (current time for flicker/tracking animation)
+        params.time = Float(CFAbsoluteTimeGetCurrent().truncatingRemainder(dividingBy: 100.0))
+
+        return params
+    }
+
+    // MARK: - ★★★ Digicam Effects ★★★
+
+    private func applyDigicamEffects(input: MTLTexture, config: DigicamEffectsConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.digicamEffectsPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.digicamEffectsPipeline == nil {
+                print("❌ FilterRenderer: digicamEffectsPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareDigicamEffectsParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<DigicamEffectsParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareDigicamEffectsParams(_ config: DigicamEffectsConfig) -> DigicamEffectsParams {
+        var params = DigicamEffectsParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Digital noise
+        params.digitalNoiseEnabled = config.digitalNoise.enabled ? 1 : 0
+        params.digitalNoiseIntensity = config.digitalNoise.intensity
+        params.luminanceNoise = config.digitalNoise.luminanceNoise
+        params.chrominanceNoise = config.digitalNoise.chrominanceNoise
+        params.banding = config.digitalNoise.banding
+        params.hotPixels = config.digitalNoise.hotPixels
+
+        // JPEG artifacts
+        params.jpegArtifacts = config.jpegArtifacts
+
+        // Camera processing
+        params.whiteBalance = config.whiteBalance
+        params.autoExposure = config.autoExposure
+        params.sharpening = config.sharpening
+
+        // Random seed
+        params.seed = UInt32.random(in: 0..<10000)
+
+        return params
+    }
+
+    // MARK: - ★★★ Film Strip Effects ★★★
+
+    private func applyFilmStripEffects(input: MTLTexture, config: FilmStripEffectsConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.filmStripPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.filmStripPipeline == nil {
+                print("❌ FilterRenderer: filmStripPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        var params = prepareFilmStripParams(config)
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<FilmStripParams>.stride, index: 0)
+
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    private func prepareFilmStripParams(_ config: FilmStripEffectsConfig) -> FilmStripParams {
+        var params = FilmStripParams()
+        params.enabled = config.enabled ? 1 : 0
+
+        // Perforations
+        switch config.perforations {
+        case .none: params.perforationStyle = 0
+        case .standard35mm: params.perforationStyle = 1
+        case .cinema: params.perforationStyle = 2
+        case .super8: params.perforationStyle = 3
+        }
+
+        // Border
+        params.borderColor = SIMD3<Float>(config.borderColor.r, config.borderColor.g, config.borderColor.b)
+        params.borderOpacity = config.borderOpacity
+
+        // Frame lines
+        params.frameLineWidth = config.frameLineWidth
+        params.frameLineOpacity = config.frameLineOpacity
+
+        // Rebate
+        params.rebateVisible = config.rebateVisible ? 1 : 0
+        params.frameNumber = config.frameNumber ? 1 : 0
+        params.kodakStyle = config.kodakStyle ? 1 : 0
 
         return params
     }
