@@ -147,6 +147,16 @@ class FilterRenderer {
             }
         }
 
+        // PASS 4.5: Halation (Simplified single-pass for preview - important for Tungsten Night 800)
+        if preset.halation.enabled {
+            if let result = applyHalationSimplified(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
+                currentInput = result
+                passCount += 1
+            } else {
+                failedPasses.append("Halation")
+            }
+        }
+
         // PASS 5: Grain (AFTER lighting effects for natural appearance)
         if preset.grain.enabled {
             if let result = applyGrain(input: currentInput, config: preset.grain, commandBuffer: commandBuffer) {
@@ -187,7 +197,7 @@ class FilterRenderer {
             }
         }
 
-        // PASS 9: VHS Effects (scanlines, color bleed, tracking)
+        // PASS 8.5: VHS Effects (scanlines, color bleed - for VHS presets)
         if preset.vhsEffects.enabled {
             if let result = applyVHSEffects(input: currentInput, config: preset.vhsEffects, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -197,7 +207,7 @@ class FilterRenderer {
             }
         }
 
-        // PASS 10: Digicam Effects (digital noise, JPEG artifacts)
+        // PASS 8.6: Digicam Effects (digital noise, JPEG artifacts - for digicam presets)
         if preset.digicamEffects.enabled {
             if let result = applyDigicamEffects(input: currentInput, config: preset.digicamEffects, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -207,7 +217,7 @@ class FilterRenderer {
             }
         }
 
-        // PASS 11: Film Strip Effects (borders, perforations)
+        // PASS 8.7: Film Strip Effects (borders, perforations - for film strip preset)
         if preset.filmStripEffects.enabled {
             if let result = applyFilmStripEffects(input: currentInput, config: preset.filmStripEffects, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -217,7 +227,7 @@ class FilterRenderer {
             }
         }
 
-        // PASS 12: Instant Frame (for Polaroid/Instax look)
+        // PASS 9: Instant Frame (for Polaroid/Instax look)
         if preset.instantFrame.enabled {
             if let result = applyInstantFrame(input: currentInput, config: preset.instantFrame, commandBuffer: commandBuffer) {
                 currentInput = result
@@ -392,6 +402,41 @@ class FilterRenderer {
         params.enabled = 1
 
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        renderEncoder.endEncoding()
+
+        return output
+    }
+
+    /// Simplified halation for preview (single-pass, radius capped at 8)
+    /// Uses legacy halationPipeline for performance
+    private func applyHalationSimplified(input: MTLTexture, config: HalationConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        guard let pipeline = RenderEngine.shared.halationPipeline,
+              let output = getNextOutputTexture() else {
+            #if DEBUG
+            if RenderEngine.shared.halationPipeline == nil {
+                print("❌ FilterRenderer: halationPipeline is nil!")
+            }
+            #endif
+            return nil
+        }
+
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let renderEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+
+        renderEncoder.setRenderPipelineState(pipeline)
+        renderEncoder.setFragmentTexture(input, index: 0)
+
+        // OPTIMIZED: Cap radius at 8 for preview (legacy shader uses step=3 for performance)
+        var params = HalationParams()
+        params.enabled = 1
+        params.color = SIMD3<Float>(config.color.r, config.color.g, config.color.b)
+        params.intensity = config.intensity
+        params.threshold = config.threshold
+        params.radius = min(config.radius, 8.0)  // MAX 8 for preview
+        params.softness = config.softness
+
+        renderEncoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         renderEncoder.endEncoding()
 
