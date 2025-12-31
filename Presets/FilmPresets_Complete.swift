@@ -8,12 +8,12 @@ struct FilmPresets {
     
     // MARK: - PROFESSIONAL FILM STOCKS
     
-    static let kodakPortra400 = FilterPreset(
-        id: "PORTRA_400_AUTHENTIC",
-        label: "Kodak Portra 400",
+    static let warmPortrait400 = FilterPreset(
+        id: "WARM_PORTRAIT_400",
+        label: "Warm Portrait 400",
         category: .professional,
         lutId: "PORTRA_400_LINEAR",
-        lutFile: "Kodak_Portra_400_Linear.cube",  // ★ Fixed: removed "luts/" prefix
+        lutFile: "Kodak_Portra_400_Linear.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.04, saturation: 0.0, vibrance: 0.02),
         grain: GrainConfig(
@@ -34,15 +34,15 @@ struct FilmPresets {
             colorJitter: GrainColorJitter(enabled: true, strength: 0.0018, perPixel: true, blueStrength: 1.1, seed: 400)),
         bloom: BloomConfig(enabled: true, intensity: 0.04, threshold: 0.80, radius: 10, softness: 0.72, colorTint: ColorTint(r: 1.0, g: 0.96, b: 0.88)),
         vignette: VignetteConfig(enabled: true, intensity: 0.10, roundness: 0.80, feather: 0.60),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "Portra 400", type: "Color Negative (C-41)", speed: 400, year: 2010,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Warm Portrait 400", type: "Color Negative (C-41)", speed: 400, year: 2010,
             characteristics: ["Natural skin tones", "Wide dynamic range", "Low saturation", "Fine grain"]))
     
-    static let kodakPortra160 = FilterPreset(
-        id: "KODAK_PORTRA_160",
-        label: "Kodak Portra 160 · Natural Portrait",
+    static let naturalPortrait160 = FilterPreset(
+        id: "NATURAL_PORTRAIT_160",
+        label: "Natural Portrait 160",
         category: .professional,
         lutId: "KODAK_PORTRA_160",
-        lutFile: "Kodak_Portra_160_Linear.cube",  // ★ Fixed
+        lutFile: "Kodak_Portra_160_Linear.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: -0.05),
         splitTone: SplitToneConfig(shadowsHue: 185, shadowsSat: 0.08, highlightsHue: 32, highlightsSat: 0.06, balance: 0.35, midtoneProtection: 0.45),
@@ -59,15 +59,15 @@ struct FilmPresets {
             temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 8191, coherence: 0.40)),
         bloom: BloomConfig(enabled: true, intensity: 0.045, threshold: 0.78, radius: 12, softness: 0.75, colorTint: ColorTint(r: 1.04, g: 1.0, b: 0.92)),
         vignette: VignetteConfig(enabled: true, intensity: 0.08, roundness: 0.82, feather: 0.70),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "Portra 160", type: "Color Negative (C-41)", speed: 160, year: 2010,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Natural Portrait 160", type: "Color Negative (C-41)", speed: 160, year: 2010,
             characteristics: ["Very fine grain", "Pastel look", "Natural colors", "Studio favorite"]))
     
-    static let fujiPro400H = FilterPreset(
-        id: "FUJI_400H",
-        label: "Fuji Pro 400H · Linear",
+    static let coolPortrait400 = FilterPreset(
+        id: "COOL_PORTRAIT_400",
+        label: "Cool Portrait 400",
         category: .professional,
         lutId: "FUJI_400H",
-        lutFile: "Fuji_400H_Linear.cube",  // ★ Fixed
+        lutFile: "Fuji_400H_Linear.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.03, contrast: -0.08, highlights: -0.04, shadows: 0.06, saturation: -0.08, vibrance: 0.12, temperature: -0.03, tint: 0.04, fade: 0.03),
         splitTone: SplitToneConfig(shadowsHue: 195, shadowsSat: 0.08, highlightsHue: 42, highlightsSat: 0.04),
@@ -89,17 +89,17 @@ struct FilmPresets {
             colorJitter: GrainColorJitter(enabled: true, strength: 0.0015, perPixel: true, blueStrength: 1.10, seed: 400)),
         bloom: BloomConfig(enabled: true, intensity: 0.035, threshold: 0.82, radius: 10, softness: 0.72, colorTint: ColorTint(r: 1.0, g: 0.98, b: 0.94)),
         vignette: VignetteConfig(enabled: true, intensity: 0.10, roundness: 0.88, feather: 0.60),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Pro 400H", type: "Color Negative (C-41)", speed: 400, year: 2004,
-            characteristics: ["Soft pastel tones", "Cool shadows", "Fine grain", "Discontinued 2021"]))
+        filmStock: FilmStock(manufacturer: "Generic", name: "Cool Portrait 400", type: "Color Negative (C-41)", speed: 400, year: 2004,
+            characteristics: ["Soft pastel tones", "Cool shadows", "Fine grain", "Classic look"]))
     
     // MARK: - CONSUMER FILM STOCKS
     
-    static let kodakUltramax400 = FilterPreset(
-        id: "ULTRAMAX_400_AUTHENTIC",
-        label: "Kodak Ultramax 400 v6.0",
+    static let vibrantColor400 = FilterPreset(
+        id: "VIBRANT_COLOR_400",
+        label: "Vibrant Color 400",
         category: .consumer,
         lutId: "KODAK_ULTRAMAX_400_LINEAR",
-        lutFile: "Kodak_Ultramax_400_linear_inout.cube",  // ★ Fixed
+        lutFile: "Kodak_Ultramax_400_linear_inout.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.08, saturation: 0.0, vibrance: 0.02),
         splitTone: SplitToneConfig(shadowsHue: 185, shadowsSat: 0.10, highlightsHue: 40, highlightsSat: 0.05),
@@ -118,15 +118,15 @@ struct FilmPresets {
             colorJitter: GrainColorJitter(enabled: true, strength: 0.0025, perPixel: true, blueStrength: 1.2, seed: 42)),
         bloom: BloomConfig(enabled: true, intensity: 0.045, threshold: 0.78, radius: 12, softness: 0.75, colorTint: ColorTint(r: 1.0, g: 0.94, b: 0.82)),
         vignette: VignetteConfig(enabled: true, intensity: 0.12, roundness: 0.85, feather: 0.55),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "Ultramax 400", type: "Color Negative (C-41)", speed: 400, year: 1997,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Vibrant Color 400", type: "Color Negative (C-41)", speed: 400, year: 1997,
             characteristics: ["Vibrant colors", "Punchy contrast", "Visible grain", "Great for everyday"]))
     
-    static let kodakGold200 = FilterPreset(
-        id: "KODAK_GOLD_200_V2",
-        label: "Kodak Gold 200 v4.0",
+    static let goldenTone200 = FilterPreset(
+        id: "GOLDEN_TONE_200",
+        label: "Golden Tone 200",
         category: .consumer,
         lutId: "KODAK_GOLD_200_V2",
-        lutFile: "Kodak_Gold_200_v2_linear.cube",  // ★ Fixed
+        lutFile: "Kodak_Gold_200_v2_linear.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.04, saturation: 0.0, vibrance: 0.03),
         grain: GrainConfig(
@@ -143,24 +143,24 @@ struct FilmPresets {
             colorJitter: GrainColorJitter(enabled: true, strength: 0.002, perPixel: true, blueStrength: 1.2, seed: 200)),
         bloom: BloomConfig(enabled: true, intensity: 0.06, threshold: 0.78, radius: 12, softness: 0.70, colorTint: ColorTint(r: 1.0, g: 0.88, b: 0.68)),
         vignette: VignetteConfig(enabled: true, intensity: 0.12, roundness: 0.75, feather: 0.65),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "Gold 200", type: "Color Negative (C-41)", speed: 200, year: 1988,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Golden Tone 200", type: "Color Negative (C-41)", speed: 200, year: 1988,
             characteristics: ["Warm golden tones", "Budget friendly", "Great for daylight"]))
     
-    static let kodakColorPlus200 = FilterPreset(
-        id: "KODAK_COLORPLUS_200",
-        label: "Kodak ColorPlus 200 · Warm Consumer",
+    static let warmConsumer200 = FilterPreset(
+        id: "WARM_CONSUMER_200",
+        label: "Warm Consumer 200",
         category: .consumer,
         lutId: "KODAK_COLORPLUS_200",
-        lutFile: "Kodak_ColorPlus_200_Linear.cube",  // ★ Fixed
+        lutFile: "Kodak_ColorPlus_200_Linear.cube",
         colorSpace: "linear",
-        filmStock: FilmStock(manufacturer: "Kodak", name: "ColorPlus 200", type: "Color Negative (C-41)", speed: 200, year: 2005,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Warm Consumer 200", type: "Color Negative (C-41)", speed: 200, year: 2005,
             characteristics: ["Warm tones", "Budget consumer film", "Nostalgic everyday look"]))
     
-    static let fujiSuperia400 = FilterPreset(
-        id: "SUPERIA_400",
-        label: "Fuji Superia X-TRA 400",
+    static let vividConsumer400 = FilterPreset(
+        id: "VIVID_CONSUMER_400",
+        label: "Vivid Consumer 400",
         category: .consumer,
-        lutFile: "Fuji_Superia_400_Linear.cube",  // ★ Added LUT file
+        lutFile: "Fuji_Superia_400_Linear.cube",
         colorAdjustments: ColorAdjustments(exposure: 0.05, contrast: 0.12, highlights: -0.05, shadows: 0.08, saturation: 0.15, vibrance: 0.10, temperature: -0.02, tint: 0.04, fade: 0.05),
         splitTone: SplitToneConfig(shadowsHue: 170, shadowsSat: 0.12, highlightsHue: 40, highlightsSat: 0.05),
         rgbCurves: RGBCurves(
@@ -170,14 +170,14 @@ struct FilmPresets {
         grain: GrainConfig(enabled: true, globalIntensity: 0.22),
         bloom: BloomConfig(enabled: true, intensity: 0.12, threshold: 0.75, radius: 12),
         vignette: VignetteConfig(enabled: true, intensity: 0.15),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Superia X-TRA 400", type: "Color Negative (C-41)", speed: 400, year: 1998,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Vivid Consumer 400", type: "Color Negative (C-41)", speed: 400, year: 1998,
             characteristics: ["Vivid colors", "Cyan shadows", "Consumer favorite"]))
     
     // MARK: - SLIDE FILM STOCKS
     
-    static let fujiVelvia100 = FilterPreset(
-        id: "FUJI_VELVIA_100",
-        label: "Fuji Velvia 100 · Vivid Slide",
+    static let vividSlide100 = FilterPreset(
+        id: "VIVID_SLIDE_100",
+        label: "Vivid Slide 100",
         category: .slide,
         lutId: "FUJI_VELVIA_100",
         lutFile: "Fuji_Velvia_100_Linear.cube",
@@ -189,93 +189,44 @@ struct FilmPresets {
         grain: GrainConfig(
             enabled: true, globalIntensity: 0.06,
             channels: GrainChannels(
-                red: GrainChannel(intensity: 0.05, size: 0.88, seed: 5001, softness: 0.70),
-                green: GrainChannel(intensity: 0.06, size: 0.90, seed: 5002, softness: 0.68),
-                blue: GrainChannel(intensity: 0.08, size: 0.95, seed: 5003, softness: 0.65)),
-            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.45, lacunarity: 1.6, baseFrequency: 0.85),
-            densityCurve: [
-                GrainDensityPoint(luma: 0.0, multiplier: 0.05),
-                GrainDensityPoint(luma: 0.35, multiplier: 0.80),
-                GrainDensityPoint(luma: 0.50, multiplier: 1.0),
-                GrainDensityPoint(luma: 0.75, multiplier: 0.50),
-                GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
-            chromatic: GrainChromatic(enabled: false),
-            clumping: GrainClumping(enabled: true, strength: 0.08, threshold: 0.30, clusterSize: 1.0),
-            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.35),
-            colorJitter: GrainColorJitter(enabled: false)),
-        bloom: BloomConfig(enabled: true, intensity: 0.02, threshold: 0.85, radius: 6, softness: 0.70),
-        vignette: VignetteConfig(enabled: true, intensity: 0.06, roundness: 0.90, feather: 0.65),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Velvia 100", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2007,
+                red: GrainChannel(intensity: 0.07, size: 0.92, seed: 5001, softness: 0.68),
+                green: GrainChannel(intensity: 0.08, size: 0.95, seed: 5002, softness: 0.65),
+                blue: GrainChannel(intensity: 0.10, size: 1.00, seed: 5003, softness: 0.62))),
+        bloom: BloomConfig(enabled: true, intensity: 0.03, threshold: 0.82, radius: 8, softness: 0.68),
+        vignette: VignetteConfig(enabled: true, intensity: 0.08, roundness: 0.90, feather: 0.62),
+        filmStock: FilmStock(manufacturer: "Generic", name: "Vivid Slide 100", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2007,
             characteristics: ["Extremely high saturation", "Vivid colors", "High contrast", "Landscape favorite"]))
     
-    static let fujiProvia100F = FilterPreset(
-        id: "FUJI_PROVIA_100F",
-        label: "Fuji Provia 100F · LUT",
+    static let neutralSlide100 = FilterPreset(
+        id: "NEUTRAL_SLIDE_100",
+        label: "Neutral Slide 100",
         category: .slide,
         lutId: "FUJI_PROVIA_100F",
-        lutFile: "provia_100f_33.cube",  // ★★★ FIXED: Was "Fuji_Provia_100F_Linear.cube"
+        lutFile: "provia_100f_33.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: 0.05, saturation: 0.0, vibrance: 0.05),
-        grain: GrainConfig(
-            enabled: true, globalIntensity: 0.06,
-            channels: GrainChannels(
-                red: GrainChannel(intensity: 0.05, size: 0.85, seed: 5101, softness: 0.72),
-                green: GrainChannel(intensity: 0.06, size: 0.88, seed: 5102, softness: 0.70),
-                blue: GrainChannel(intensity: 0.07, size: 0.92, seed: 5103, softness: 0.68)),
-            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.40, lacunarity: 1.5, baseFrequency: 0.75),
-            densityCurve: [
-                GrainDensityPoint(luma: 0.0, multiplier: 0.05),
-                GrainDensityPoint(luma: 0.40, multiplier: 0.90),
-                GrainDensityPoint(luma: 0.55, multiplier: 1.0),
-                GrainDensityPoint(luma: 0.80, multiplier: 0.45),
-                GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
-            chromatic: GrainChromatic(enabled: false),
-            clumping: GrainClumping(enabled: true, strength: 0.08, threshold: 0.35, clusterSize: 0.9),
-            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.40),
-            colorJitter: GrainColorJitter(enabled: false)),
-        bloom: BloomConfig(enabled: true, intensity: 0.025, threshold: 0.84, radius: 8, softness: 0.70),
-        vignette: VignetteConfig(enabled: true, intensity: 0.06, roundness: 0.92, feather: 0.65),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Provia 100F", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Neutral Slide 100", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
             characteristics: ["Neutral colors", "Fine grain", "Versatile slide film"]))
-
-    static let fujiAstia100F = FilterPreset(
-        id: "FUJI_ASTIA_100F",
-        label: "Fuji Astia 100F · LUT",
+    
+    static let softSlide100 = FilterPreset(
+        id: "SOFT_SLIDE_100",
+        label: "Soft Slide 100",
         category: .slide,
         lutId: "FUJI_ASTIA_100F",
-        lutFile: "Fuji_Astia_100F_Linear.cube",  // ★ Confirmed correct
+        lutFile: "Fuji_Astia_100F_Linear.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.0, contrast: -0.02, saturation: -0.05, vibrance: 0.03),
-        grain: GrainConfig(
-            enabled: true, globalIntensity: 0.05,
-            channels: GrainChannels(
-                red: GrainChannel(intensity: 0.04, size: 0.80, seed: 5201, softness: 0.75),
-                green: GrainChannel(intensity: 0.05, size: 0.82, seed: 5202, softness: 0.73),
-                blue: GrainChannel(intensity: 0.06, size: 0.85, seed: 5203, softness: 0.70)),
-            texture: GrainTexture(type: "perlin", octaves: 2, persistence: 0.38, lacunarity: 1.5, baseFrequency: 0.70),
-            densityCurve: [
-                GrainDensityPoint(luma: 0.0, multiplier: 0.05),
-                GrainDensityPoint(luma: 0.45, multiplier: 0.85),
-                GrainDensityPoint(luma: 0.60, multiplier: 1.0),
-                GrainDensityPoint(luma: 0.85, multiplier: 0.40),
-                GrainDensityPoint(luma: 1.0, multiplier: 0.05)],
-            chromatic: GrainChromatic(enabled: false),
-            clumping: GrainClumping(enabled: true, strength: 0.06, threshold: 0.38, clusterSize: 0.85),
-            temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.45),
-            colorJitter: GrainColorJitter(enabled: false)),
-        bloom: BloomConfig(enabled: true, intensity: 0.02, threshold: 0.85, radius: 10, softness: 0.75),
-        vignette: VignetteConfig(enabled: true, intensity: 0.05, roundness: 0.94, feather: 0.70),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Astia 100F", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Soft Slide 100", type: "Color Reversal (E-6 Slide)", speed: 100, year: 2002,
             characteristics: ["Soft colors", "Portrait friendly", "Lower contrast"]))
     
     // MARK: - CINEMA FILM STOCKS
     
-    static let fujiEterna500T = FilterPreset(
-        id: "ETERNA",
-        label: "Fuji ETERNA 500T Cinema",
+    static let cinemaTungsten500 = FilterPreset(
+        id: "CINEMA_TUNGSTEN_500",
+        label: "Cinema Tungsten 500",
         category: .cinema,
         lutId: "ETERNA",
-        lutFile: "Fuji_Eterna_linear.cube",  // ★ Fixed
+        lutFile: "Fuji_Eterna_linear.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: -0.01, contrast: -0.08, highlights: -0.05, shadows: 0.05, saturation: -0.15, vibrance: -0.03, temperature: -0.03, tint: 0.01, fade: 0.04),
         splitTone: SplitToneConfig(shadowsHue: 195, shadowsSat: 0.06),
@@ -297,17 +248,17 @@ struct FilmPresets {
             temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.35)),
         bloom: BloomConfig(enabled: true, intensity: 0.025, threshold: 0.82, radius: 8, softness: 0.80, colorTint: ColorTint(r: 1.0, g: 0.98, b: 0.95)),
         vignette: VignetteConfig(enabled: true, intensity: 0.06, roundness: 0.90, feather: 0.70),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "ETERNA 500T", type: "Motion Picture Negative (ECN-2)", speed: 500, year: 2006,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Cinema Tungsten 500", type: "Motion Picture Negative (ECN-2)", speed: 500, year: 2006,
             characteristics: ["Flat profile for grading", "Low saturation", "Cinema look", "Wide latitude"]))
     
     // MARK: - BLACK & WHITE FILM STOCKS
     
-    static let kodakTriX400 = FilterPreset(
-        id: "KODAK_TRI_X_400",
-        label: "Kodak Tri-X 400 · Classic B&W",
+    static let classicBW400 = FilterPreset(
+        id: "CLASSIC_BW_400",
+        label: "Classic B&W 400",
         category: .blackAndWhite,
         lutId: "KODAK_TRI_X_400",
-        lutFile: "Kodak_Tri-X_400_Linear.cube",  // ★ Fixed
+        lutFile: "Kodak_Tri-X_400_Linear.cube",
         colorSpace: "linear",
         grain: GrainConfig(
             enabled: true, globalIntensity: 0.25,
@@ -322,16 +273,16 @@ struct FilmPresets {
             temporal: GrainTemporal(enabled: true, refreshRate: 1, seedIncrement: 7919, coherence: 0.25)),
         bloom: BloomConfig(enabled: true, intensity: 0.06, threshold: 0.80, radius: 8, softness: 0.72, colorTint: ColorTint(r: 1.0, g: 1.0, b: 1.0)),
         vignette: VignetteConfig(enabled: true, intensity: 0.15, roundness: 0.82, feather: 0.58),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "Tri-X 400", type: "Black & White Negative", speed: 400, year: 1954,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Classic B&W 400", type: "Black & White Negative", speed: 400, year: 1954,
             characteristics: ["High contrast", "Distinctive grain", "Classic B&W look", "Wide latitude"]))
     
     // MARK: - INSTANT FILM STOCKS
     
-    static let polaroid600 = FilterPreset(
-        id: "POLAROID_600",
-        label: "Polaroid 600 · Classic Instant",
+    static let classicInstant600 = FilterPreset(
+        id: "CLASSIC_INSTANT_600",
+        label: "Classic Instant 600",
         category: .instant,
-        lutFile: "Polaroid_600_Linear.cube",  // ★ Added LUT
+        lutFile: "Polaroid_600_Linear.cube",
         colorAdjustments: ColorAdjustments(exposure: 0.08, contrast: 0.15, highlights: -0.20, shadows: -0.05, whites: -0.05, blacks: 0.12, saturation: -0.08, vibrance: 0.05, temperature: 0.06, tint: -0.02, fade: 0.08, clarity: -0.08),
         splitTone: SplitToneConfig(shadowsHue: 185, shadowsSat: 0.15, highlightsHue: 350, highlightsSat: 0.08, balance: 0.35, midtoneProtection: 0.30),
         selectiveColor: [
@@ -367,12 +318,12 @@ struct FilmPresets {
         ),
         skinToneProtection: SkinToneProtection(enabled: true, hueCenter: 25, hueRange: 30, satProtection: 0.4, warmthBoost: 0.03),
         toneMapping: ToneMapping(enabled: true, method: "filmic", whitePoint: 1.15, shoulderStrength: 0.20, linearStrength: 0.30, toeStrength: 0.25),
-        filmStock: FilmStock(manufacturer: "Polaroid", name: "600 Film", type: "Instant Integral", speed: 640, year: 1981,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Classic Instant 600", type: "Instant Integral", speed: 640, year: 1981,
             characteristics: ["Iconic white frame", "Warm color cast", "Cyan shadows", "Pink highlights", "Chemical development look"]))
     
-    static let instaxMini = FilterPreset(
-        id: "INSTAX_MINI",
-        label: "Instax Mini · Bright Pop",
+    static let miniInstant = FilterPreset(
+        id: "MINI_INSTANT",
+        label: "Mini Instant · Bright Pop",
         category: .instant,
         colorAdjustments: ColorAdjustments(exposure: 0.12, contrast: -0.08, highlights: -0.05, shadows: 0.18, whites: 0.05, blacks: 0.10, saturation: 0.08, vibrance: 0.15, temperature: -0.02, tint: 0.02, fade: 0.05, clarity: -0.05),
         splitTone: SplitToneConfig(shadowsHue: 210, shadowsSat: 0.08, highlightsHue: 45, highlightsSat: 0.06, balance: 0.45, midtoneProtection: 0.35),
@@ -405,12 +356,12 @@ struct FilmPresets {
         ),
         skinToneProtection: SkinToneProtection(enabled: true, hueCenter: 22, hueRange: 28, satProtection: 0.35, warmthBoost: 0.02),
         toneMapping: ToneMapping(enabled: true, method: "filmic", whitePoint: 1.2, shoulderStrength: 0.15, linearStrength: 0.40, toeStrength: 0.15),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Instax Mini", type: "Instant Integral", speed: 800, year: 1998,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Mini Instant", type: "Instant Integral", speed: 800, year: 1998,
             characteristics: ["Bright and airy", "Slightly cool tone", "High key friendly", "Gen Z aesthetic"]))
     
-    static let polaroidSX70 = FilterPreset(
-        id: "POLAROID_SX70",
-        label: "Polaroid SX-70 · Vintage 70s",
+    static let retroInstant70s = FilterPreset(
+        id: "RETRO_INSTANT_70S",
+        label: "Retro Instant 70s",
         category: .instant,
         colorAdjustments: ColorAdjustments(exposure: 0.03, contrast: 0.05, highlights: -0.10, shadows: 0.08, whites: -0.08, blacks: 0.05, saturation: 0.08, vibrance: 0.10, temperature: 0.10, tint: 0.02, fade: 0.06),
         splitTone: SplitToneConfig(shadowsHue: 175, shadowsSat: 0.18, highlightsHue: 35, highlightsSat: 0.14, balance: 0.30, midtoneProtection: 0.25),
@@ -448,17 +399,17 @@ struct FilmPresets {
         ),
         skinToneProtection: SkinToneProtection(enabled: true, hueCenter: 28, hueRange: 32, satProtection: 0.45, warmthBoost: 0.05),
         toneMapping: ToneMapping(enabled: true, method: "filmic", whitePoint: 1.1, shoulderStrength: 0.25, linearStrength: 0.28, toeStrength: 0.20),
-        filmStock: FilmStock(manufacturer: "Polaroid", name: "SX-70", type: "Instant Integral", speed: 160, year: 1972,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Retro Instant 70s", type: "Instant Integral", speed: 160, year: 1972,
             characteristics: ["70s aesthetic", "Rich warm tones", "Deeper colors", "Vintage character"]))
     
     // MARK: - DISPOSABLE CAMERA PRESETS
     
-    static let kodakFunSaver = FilterPreset(
-        id: "KODAK_FUNSAVER",
-        label: "Kodak FunSaver · Party Flash",
+    static let partyFlashDisposable = FilterPreset(
+        id: "PARTY_FLASH_DISPOSABLE",
+        label: "Party Flash · Disposable",
         category: .disposable,
         lutId: "KODAK_GOLD_200_V2",
-        lutFile: "Kodak_Gold_200_v2_linear.cube",  // ★ Fixed
+        lutFile: "Kodak_Gold_200_v2_linear.cube",
         colorSpace: "linear",
         colorAdjustments: ColorAdjustments(exposure: 0.05, contrast: 0.12, highlights: 0.08, shadows: -0.05, whites: 0.05, blacks: -0.03, saturation: 0.10, vibrance: 0.05, temperature: 0.02, tint: -0.04, clarity: -0.08),
         splitTone: SplitToneConfig(shadowsHue: 140, shadowsSat: 0.10, highlightsHue: 50, highlightsSat: 0.08, balance: 0.40, midtoneProtection: 0.20),
@@ -481,12 +432,12 @@ struct FilmPresets {
             colorJitter: GrainColorJitter(enabled: true, strength: 0.0025, perPixel: true, blueStrength: 1.2, seed: 2100)),
         vignette: VignetteConfig(enabled: true, intensity: 0.28, roundness: 0.65, feather: 0.55, midpoint: 0.45),
         skinToneProtection: SkinToneProtection(enabled: true, hueCenter: 25, hueRange: 30, satProtection: 0.30, warmthBoost: 0.02),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "FunSaver", type: "Disposable (Gold 400)", speed: 400, year: 1987,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Party Flash Disposable", type: "Disposable Camera", speed: 400, year: 1987,
             characteristics: ["Flash falloff", "Barrel distortion", "Chromatic aberration", "Light leaks", "Party aesthetic"]))
     
-    static let fujiQuickSnap = FilterPreset(
-        id: "FUJI_QUICKSNAP",
-        label: "Fuji QuickSnap · Cool Flash",
+    static let coolFlashDisposable = FilterPreset(
+        id: "COOL_FLASH_DISPOSABLE",
+        label: "Cool Flash · Disposable",
         category: .disposable,
         colorAdjustments: ColorAdjustments(exposure: 0.03, contrast: 0.15, highlights: 0.10, shadows: -0.08, whites: 0.03, blacks: -0.05, saturation: 0.12, vibrance: 0.08, temperature: -0.05, tint: 0.02, clarity: -0.10),
         splitTone: SplitToneConfig(shadowsHue: 195, shadowsSat: 0.14, highlightsHue: 45, highlightsSat: 0.06, balance: 0.35, midtoneProtection: 0.22),
@@ -512,7 +463,7 @@ struct FilmPresets {
             colorJitter: GrainColorJitter(enabled: true, strength: 0.0022, perPixel: true, blueStrength: 1.18, seed: 2200)),
         vignette: VignetteConfig(enabled: true, intensity: 0.25, roundness: 0.68, feather: 0.58, midpoint: 0.48),
         skinToneProtection: SkinToneProtection(enabled: true, hueCenter: 22, hueRange: 28, satProtection: 0.35, warmthBoost: 0.03),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "QuickSnap", type: "Disposable (Superia 400)", speed: 400, year: 1986,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Cool Flash Disposable", type: "Disposable Camera", speed: 400, year: 1986,
             characteristics: ["Cool flash tone", "Cyan shadows", "Punchy contrast", "Y2K nostalgia"]))
     
     // MARK: - FOOD & LIFESTYLE PRESETS
@@ -598,9 +549,9 @@ struct FilmPresets {
     
     // MARK: - NIGHT & NEON PRESETS
     
-    static let cineStill800T = FilterPreset(
-        id: "CINESTILL_800T",
-        label: "Cinestill 800T · Night Halation",
+    static let tungstenNight800 = FilterPreset(
+        id: "TUNGSTEN_NIGHT_800",
+        label: "Tungsten Night 800 · Halation",
         category: .night,
         colorAdjustments: ColorAdjustments(exposure: 0.02, contrast: 0.08, highlights: -0.08, shadows: 0.10, whites: -0.05, blacks: 0.06, saturation: 0.08, vibrance: 0.10, temperature: -0.12, tint: 0.03, fade: 0.03, clarity: 0.02),
         splitTone: SplitToneConfig(shadowsHue: 215, shadowsSat: 0.18, highlightsHue: 38, highlightsSat: 0.14, balance: 0.38, midtoneProtection: 0.25),
@@ -632,8 +583,8 @@ struct FilmPresets {
             colorGradient: HalationGradient(enabled: true, inner: HalationColor(r: 1.0, g: 0.39, b: 0.20), outer: HalationColor(r: 1.0, g: 0.20, b: 0.12))),
         skinToneProtection: SkinToneProtection(enabled: true, hueCenter: 25, hueRange: 30, satProtection: 0.35, warmthBoost: 0.05),
         toneMapping: ToneMapping(enabled: true, method: "filmic", whitePoint: 1.15, shoulderStrength: 0.20, linearStrength: 0.30, toeStrength: 0.18),
-        filmStock: FilmStock(manufacturer: "Cinestill", name: "800T", type: "Color Negative (C-41)", speed: 800, year: 2012,
-            characteristics: ["★ ICONIC red-orange halation", "Tungsten balanced", "Blue shadows", "Night photography staple", "Cinema aesthetic"]))
+        filmStock: FilmStock(manufacturer: "Generic", name: "Tungsten Night 800", type: "Color Negative (C-41)", speed: 800, year: 2012,
+            characteristics: ["Red-orange halation", "Tungsten balanced", "Blue shadows", "Night photography staple", "Cinema aesthetic"]))
     
     static let cyberpunk = FilterPreset(
         id: "CYBERPUNK",
@@ -673,12 +624,12 @@ struct FilmPresets {
     
     // MARK: - CREATIVE PRESETS
     
-    static let nostalgicNeg = FilterPreset(
-        id: "NOSTALGIC_NEG",
-        label: "Nostalgic Neg · Vintage Color",
+    static let vintageAmber = FilterPreset(
+        id: "VINTAGE_AMBER",
+        label: "Vintage Amber",
         category: .creative,
         lutId: "NOSTALGIC_NEG",
-        lutFile: "Nostalgic_Neg_Linear.cube",  // ★ Fixed
+        lutFile: "Nostalgic_Neg_Linear.cube",
         colorSpace: "linear",
         splitTone: SplitToneConfig(shadowsHue: 190, shadowsSat: 0.10, highlightsHue: 35, highlightsSat: 0.08, balance: 0.38, midtoneProtection: 0.42),
         selectiveColor: [
@@ -701,14 +652,14 @@ struct FilmPresets {
             colorJitter: GrainColorJitter(enabled: true, strength: 0.0018, perPixel: true, blueStrength: 1.2, seed: 700)),
         bloom: BloomConfig(enabled: true, intensity: 0.06, threshold: 0.75, radius: 14, softness: 0.78, colorTint: ColorTint(r: 1.08, g: 1.02, b: 0.88)),
         vignette: VignetteConfig(enabled: true, intensity: 0.12, roundness: 0.78, feather: 0.62),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Nostalgic Neg", type: "Film Simulation",
+        filmStock: FilmStock(manufacturer: "Generic", name: "Vintage Amber", type: "Creative Filter",
             characteristics: ["Vintage color rendering", "Muted greens", "Warm highlights", "Aged film look"]))
     
-    static let classicNegative = FilterPreset(
-        id: "CLASSIC_NEGATIVE",
-        label: "Classic Negative",
+    static let fadedNegative = FilterPreset(
+        id: "FADED_NEGATIVE",
+        label: "Faded Negative",
         category: .creative,
-        lutFile: "classic_chrome_linear.cube",  // ★ Added LUT
+        lutFile: "classic_chrome_linear.cube",
         colorAdjustments: ColorAdjustments(exposure: -0.02, contrast: 0.18, highlights: 0.08, shadows: -0.10, saturation: -0.10, vibrance: -0.04, temperature: 0.03, tint: -0.02),
         splitTone: SplitToneConfig(shadowsHue: 220, shadowsSat: 0.14, highlightsHue: 32, highlightsSat: 0.12),
         rgbCurves: RGBCurves(
@@ -718,7 +669,7 @@ struct FilmPresets {
         grain: GrainConfig(enabled: true, globalIntensity: 0.18),
         bloom: BloomConfig(enabled: true, intensity: 0.04),
         vignette: VignetteConfig(enabled: true, intensity: 0.12),
-        filmStock: FilmStock(manufacturer: "Fujifilm", name: "Classic Negative", type: "Film Simulation",
+        filmStock: FilmStock(manufacturer: "Generic", name: "Faded Negative", type: "Creative Filter",
             characteristics: ["High contrast", "Desaturated", "Nostalgic look"]))
 
     // MARK: - NEW CREATIVE PRESETS
@@ -779,9 +730,9 @@ struct FilmPresets {
 
     // MARK: - VHS PRESETS
 
-    static let vhsCamcorder = FilterPreset(
-        id: "VHS_CAMCORDER",
-        label: "VHS Camcorder · Home Video",
+    static let retro90sCamcorder = FilterPreset(
+        id: "RETRO_90S_CAMCORDER",
+        label: "90s Camcorder · Home Video",
         category: .vhs,
         colorAdjustments: ColorAdjustments(
             exposure: 0.03, contrast: 0.08, highlights: 0.05, shadows: -0.05,
@@ -802,7 +753,7 @@ struct FilmPresets {
             sharpnessLoss: 0.15,
             dateOverlay: true
         ),
-        filmStock: FilmStock(manufacturer: "Sony", name: "Handycam", type: "VHS-C",
+        filmStock: FilmStock(manufacturer: "Generic", name: "90s Camcorder", type: "VHS-C",
             characteristics: ["Home video look", "Soft focus", "Color bleeding", "90s camcorder aesthetic"]))
 
     static let vhsPlayback = FilterPreset(
@@ -833,9 +784,9 @@ struct FilmPresets {
 
     // MARK: - FILM STRIP PRESET
 
-    static let film35mm = FilterPreset(
-        id: "FILM_35MM",
-        label: "35mm Film Strip · Kodak Style",
+    static let negativeFilmStrip = FilterPreset(
+        id: "NEGATIVE_FILM_STRIP",
+        label: "35mm Negative Film Strip",
         category: .creative,
         colorAdjustments: ColorAdjustments(
             exposure: 0.02, contrast: 0.06, highlights: -0.05, shadows: 0.08,
@@ -859,16 +810,16 @@ struct FilmPresets {
             frameLineWidth: 0.003,
             frameLineOpacity: 0.8,
             rebateVisible: true,
-            rebateText: "KODAK 400TX",
+            rebateText: "FILM 400",
             frameNumber: true,
             kodakStyle: true
         ),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "35mm Film Strip", type: "Negative Scan",
-            characteristics: ["Film border visible", "Sprocket holes", "Kodak rebate", "Authentic scan look"]))
+        filmStock: FilmStock(manufacturer: "Generic", name: "35mm Film Strip", type: "Negative Scan",
+            characteristics: ["Film border visible", "Sprocket holes", "Classic rebate", "Authentic scan look"]))
 
-    static let triXOrange = FilterPreset(
-        id: "TRI_X_ORANGE",
-        label: "Tri-X · Orange Filter",
+    static let classicBWOrange = FilterPreset(
+        id: "CLASSIC_BW_ORANGE",
+        label: "Classic B&W · Orange Filter",
         category: .blackAndWhite,
         colorAdjustments: ColorAdjustments(contrast: 0.12, highlights: -0.05, shadows: -0.08),
         grain: GrainConfig(
@@ -892,14 +843,14 @@ struct FilmPresets {
             grainIntensity: 0.25,
             grainSize: 1.2
         ),
-        filmStock: FilmStock(manufacturer: "Kodak", name: "Tri-X 400 Orange", type: "Black & White Negative",
+        filmStock: FilmStock(manufacturer: "Generic", name: "Classic B&W Orange", type: "Black & White Negative",
             characteristics: ["Orange filter effect", "Dramatic skies", "High contrast", "Classic B&W portrait"]))
 
     // MARK: - DIGICAM PRESETS
 
-    static let canonIXY = FilterPreset(
-        id: "CANON_IXY",
-        label: "Canon IXY · 2000s Digicam",
+    static let y2kCompact = FilterPreset(
+        id: "Y2K_COMPACT",
+        label: "Y2K Compact · 2000s Digicam",
         category: .digicam,
         colorAdjustments: ColorAdjustments(
             exposure: 0.05, contrast: 0.10, highlights: 0.08, shadows: -0.05,
@@ -931,12 +882,12 @@ struct FilmPresets {
             sharpening: 0.45,
             timestamp: true
         ),
-        filmStock: FilmStock(manufacturer: "Canon", name: "IXY Digital", type: "CCD Digicam", speed: 400, year: 2003,
+        filmStock: FilmStock(manufacturer: "Generic", name: "Y2K Compact", type: "CCD Digicam", speed: 400, year: 2003,
             characteristics: ["CCD sensor look", "Punchy colors", "Purple fringing", "Early 2000s aesthetic"]))
 
-    static let sonyCybershot = FilterPreset(
-        id: "SONY_CYBERSHOT",
-        label: "Sony Cybershot · DSC Style",
+    static let ccdPointShoot = FilterPreset(
+        id: "CCD_POINT_SHOOT",
+        label: "CCD Point & Shoot",
         category: .digicam,
         colorAdjustments: ColorAdjustments(
             exposure: 0.03, contrast: 0.08, highlights: 0.10, shadows: -0.08,
@@ -968,36 +919,36 @@ struct FilmPresets {
             sharpening: 0.35,
             timestamp: true
         ),
-        filmStock: FilmStock(manufacturer: "Sony", name: "Cybershot DSC", type: "CCD Digicam", speed: 400, year: 2004,
-            characteristics: ["Heavy CCD bloom", "Vertical smear", "Purple fringing", "Sony color science"]))
+        filmStock: FilmStock(manufacturer: "Generic", name: "CCD Point & Shoot", type: "CCD Digicam", speed: 400, year: 2004,
+            characteristics: ["Heavy CCD bloom", "Vertical smear", "Purple fringing", "Classic digital look"]))
 
     // MARK: - ALL PRESETS
     
     static let allPresets: [FilterPreset] = [
         // Professional
-        kodakPortra400, kodakPortra160, fujiPro400H,
+        warmPortrait400, naturalPortrait160, coolPortrait400,
         // Consumer
-        kodakUltramax400, kodakGold200, kodakColorPlus200, fujiSuperia400,
+        vibrantColor400, goldenTone200, warmConsumer200, vividConsumer400,
         // Slide
-        fujiVelvia100, fujiProvia100F, fujiAstia100F,
+        vividSlide100, neutralSlide100, softSlide100,
         // Cinema
-        fujiEterna500T,
+        cinemaTungsten500,
         // Black & White
-        kodakTriX400, triXOrange,
+        classicBW400, classicBWOrange,
         // Instant
-        polaroid600, instaxMini, polaroidSX70,
+        classicInstant600, miniInstant, retroInstant70s,
         // Disposable
-        kodakFunSaver, fujiQuickSnap,
+        partyFlashDisposable, coolFlashDisposable,
         // Food
         cafeMood, freshClean, goldenFood,
         // Night
-        cineStill800T, cyberpunk,
+        tungstenNight800, cyberpunk,
         // Creative
-        nostalgicNeg, classicNegative, butter, sakura, goldenHour, film35mm,
+        vintageAmber, fadedNegative, butter, sakura, goldenHour, negativeFilmStrip,
         // VHS
-        vhsCamcorder, vhsPlayback,
+        retro90sCamcorder, vhsPlayback,
         // Digicam
-        canonIXY, sonyCybershot
+        y2kCompact, ccdPointShoot
     ]
     
     static func presets(for category: FilterCategory) -> [FilterPreset] {

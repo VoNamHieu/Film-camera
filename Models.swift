@@ -968,8 +968,8 @@ struct CCDBloomConfig: Codable, Equatable {
 
     // MARK: - Static Presets
 
-    /// Sony Cybershot style (early 2000s) - heavy vertical smear
-    static let cybershot = CCDBloomConfig(
+    /// CCD Point & Shoot style (early 2000s) - heavy vertical smear
+    static let ccdHeavy = CCDBloomConfig(
         enabled: true,
         intensity: 0.5,
         threshold: 0.65,
@@ -983,8 +983,8 @@ struct CCDBloomConfig: Codable, Equatable {
         warmShift: 0.1
     )
 
-    /// Canon PowerShot style - moderate artifacts
-    static let powershot = CCDBloomConfig(
+    /// Compact Digital style - moderate artifacts
+    static let ccdModerate = CCDBloomConfig(
         enabled: true,
         intensity: 0.4,
         threshold: 0.7,
@@ -1612,8 +1612,8 @@ struct DigicamEffectsConfig: Codable, Equatable {
 
     // MARK: - Static Presets
 
-    /// Canon PowerShot style
-    static let powershot = DigicamEffectsConfig(
+    /// Compact Digital style
+    static let compactDigital = DigicamEffectsConfig(
         enabled: true,
         digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.15, chrominanceNoise: 0.12),
         jpegArtifacts: 0.1,
@@ -1621,8 +1621,8 @@ struct DigicamEffectsConfig: Codable, Equatable {
         sharpening: 0.4
     )
 
-    /// Sony Cybershot style
-    static let cybershot = DigicamEffectsConfig(
+    /// CCD Point & Shoot style
+    static let ccdPointShoot = DigicamEffectsConfig(
         enabled: true,
         digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.2, luminanceNoise: 0.18, banding: 0.08),
         jpegArtifacts: 0.15,
@@ -1631,8 +1631,8 @@ struct DigicamEffectsConfig: Codable, Equatable {
         timestamp: true
     )
 
-    /// Fuji FinePix style
-    static let finepix = DigicamEffectsConfig(
+    /// Vintage Digital style
+    static let vintageDigital = DigicamEffectsConfig(
         enabled: true,
         digitalNoise: DigitalNoiseConfig(enabled: true, intensity: 0.12, chrominanceNoise: 0.08),
         jpegArtifacts: 0.08,
@@ -1688,24 +1688,24 @@ struct FilmStripEffectsConfig: Codable, Equatable {
 
     // MARK: - Static Presets
 
-    /// 35mm negative with Kodak rebate
-    static let kodak35mm = FilmStripEffectsConfig(
+    /// 35mm negative with classic rebate
+    static let classic35mm = FilmStripEffectsConfig(
         enabled: true,
         perforations: .standard35mm,
         borderColor: ColorTint(r: 0.12, g: 0.08, b: 0.04),
         rebateVisible: true,
-        rebateText: "KODAK 400TX",
+        rebateText: "FILM 400",
         frameNumber: true,
         kodakStyle: true
     )
 
-    /// Fuji film style
-    static let fuji35mm = FilmStripEffectsConfig(
+    /// Slide film style
+    static let slide35mm = FilmStripEffectsConfig(
         enabled: true,
         perforations: .standard35mm,
         borderColor: ColorTint(r: 0.08, g: 0.1, b: 0.06),
         rebateVisible: true,
-        rebateText: "FUJI SUPERIA",
+        rebateText: "SLIDE 100",
         frameNumber: true,
         kodakStyle: false
     )
