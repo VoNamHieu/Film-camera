@@ -428,6 +428,8 @@ enum CameraCategory: String, CaseIterable, Codable {
     case food
     case night
     case creative
+    case vhs
+    case digicam
 
     var displayName: String {
         switch self {
@@ -441,6 +443,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: return "Food & Lifestyle"
         case .night: return "Night & Neon"
         case .creative: return "Creative"
+        case .vhs: return "VHS / Camcorder"
+        case .digicam: return "Digital Camera"
         }
     }
 
@@ -456,6 +460,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: return "fork.knife"
         case .night: return "moon.stars.fill"
         case .creative: return "paintbrush.fill"
+        case .vhs: return "video.fill"
+        case .digicam: return "camera.compact"
         }
     }
 
@@ -472,6 +478,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: self = .food
         case .night: self = .night
         case .creative: self = .creative
+        case .vhs: self = .vhs
+        case .digicam: self = .digicam
         }
     }
 
@@ -488,6 +496,8 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: return .food
         case .night: return .night
         case .creative: return .creative
+        case .vhs: return .vhs
+        case .digicam: return .digicam
         }
     }
 }
