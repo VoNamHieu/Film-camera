@@ -60,20 +60,20 @@ struct PhotoEditorView: View {
     @State private var lastFilterResult: String = ""
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                
+
                 VStack(spacing: 0) {
                     // Image Display Area
                     imageDisplayArea
-                    
+
                     // Controls
                     if originalImage != nil {
                         controlsArea
                     }
                 }
-                
+
                 // Processing overlay
                 if isProcessing {
                     processingOverlay
@@ -89,7 +89,7 @@ struct PhotoEditorView: View {
                     }
                     .foregroundColor(.white)
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if filteredImage != nil {
                         Button("Save") { savePhoto() }
