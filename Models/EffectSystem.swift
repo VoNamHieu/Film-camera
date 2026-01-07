@@ -371,7 +371,7 @@ enum EffectType: String, CaseIterable, Codable {
         }
     }
 
-    /// Whether this effect supports intensity adjustment
+    /// Whether this effect supports intensity adjustment (compound effects)
     var hasIntensity: Bool {
         switch self {
         case .grain, .bloom, .vignette, .halation, .flash, .lightLeak, .ccdBloom, .overlays:
@@ -379,6 +379,23 @@ enum EffectType: String, CaseIterable, Codable {
         default:
             return false
         }
+    }
+
+    /// Whether this effect has a slider control (color/lighting adjustments)
+    var hasSlider: Bool {
+        switch self {
+        case .exposure, .contrast, .saturation, .vibrance,
+             .temperature, .tint, .highlights, .shadows,
+             .whites, .blacks, .fade, .clarity:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this effect can be expanded to show controls
+    var isExpandable: Bool {
+        return hasIntensity || hasSlider
     }
 
     /// Group this effect belongs to (for UI organization)
@@ -834,7 +851,7 @@ final class EffectStateManager: ObservableObject {
 
     /// Set intensity for a compound effect
     func setEffectIntensity(_ effect: EffectType, intensity: Float) {
-        var current = effectiveValue(for: effect)
+        let current = effectiveValue(for: effect)
 
         switch current {
         case .slider(_, let min, let max):
@@ -847,6 +864,21 @@ final class EffectStateManager: ObservableObject {
             effectOverrides[effect] = .compound(values: values)
         default:
             break
+        }
+
+        updatePerformanceLevel()
+    }
+
+    /// Set value for a slider effect (exposure, contrast, etc.)
+    func setSliderValue(_ effect: EffectType, value: Float) {
+        let current = effectiveValue(for: effect)
+
+        switch current {
+        case .slider(_, let min, let max):
+            effectOverrides[effect] = .slider(value: value, min: min, max: max)
+        default:
+            // For effects that don't have slider type, try to create one
+            effectOverrides[effect] = .slider(value: value, min: -1.0, max: 1.0)
         }
 
         updatePerformanceLevel()
