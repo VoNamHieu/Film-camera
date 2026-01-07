@@ -446,8 +446,20 @@ struct ContentView: View {
     
     private var captureControlsBar: some View {
         HStack(spacing: 50) {
-            // Gallery button - opens local gallery
-            Button(action: { showGallery = true }) {
+            // Gallery button - with context menu for Gallery and Import
+            Menu {
+                Button {
+                    showGallery = true
+                } label: {
+                    Label("View Gallery", systemImage: "photo.on.rectangle")
+                }
+
+                Button {
+                    showPhotoEditor = true
+                } label: {
+                    Label("Import & Edit Photo", systemImage: "square.and.arrow.down")
+                }
+            } label: {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.white.opacity(0.15))
