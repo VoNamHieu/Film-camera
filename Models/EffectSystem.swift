@@ -1216,6 +1216,21 @@ extension CameraCategory {
                 .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.06, "threshold": 0.75, "radius": 14]),
                 .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.12, "roundness": 0.78, "feather": 0.62])
             ]
+
+        case .vhs:
+            return [
+                .grain: .compound(values: ["enabled": 1.0, "intensity": 0.25, "size": 1.3, "softness": 0.4]),
+                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.12, "threshold": 0.65, "radius": 18]),
+                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.20, "roundness": 0.7, "feather": 0.5])
+            ]
+
+        case .digicam:
+            return [
+                .grain: .compound(values: ["enabled": 1.0, "intensity": 0.10, "size": 0.8, "softness": 0.6]),
+                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.08, "threshold": 0.72, "radius": 10]),
+                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.08, "roundness": 0.85, "feather": 0.65]),
+                .ccdBloom: .compound(values: ["enabled": 1.0, "intensity": 0.3, "threshold": 0.7, "verticalSmear": 0.2, "purpleFringing": 0.15])
+            ]
         }
     }
 }
