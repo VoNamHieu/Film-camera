@@ -1060,7 +1060,7 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        var params = prepareInstantFrameParams(config)
+        var params = prepareInstantFrameParams(config, inputTexture: input)
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<InstantFrameParams>.stride, index: 0)
 
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
@@ -1188,12 +1188,23 @@ class FilterRenderer {
         return params
     }
 
-    private func prepareInstantFrameParams(_ config: InstantFrameConfig) -> InstantFrameParams {
+    private func prepareInstantFrameParams(_ config: InstantFrameConfig, inputTexture: MTLTexture) -> InstantFrameParams {
         var params = InstantFrameParams()
         params.borderWidths = SIMD4<Float>(config.borderWidth.top, config.borderWidth.left, config.borderWidth.right, config.borderWidth.bottom)
         params.borderColor = SIMD3<Float>(config.borderColor.r, config.borderColor.g, config.borderColor.b)
         params.edgeFade = 0.05
         params.cornerDarkening = 0.08
+
+        // ★ FIX: Calculate aspect ratios to prevent stretching
+        // Input aspect ratio (width / height)
+        params.inputAspect = Float(inputTexture.width) / Float(inputTexture.height)
+
+        // Content area aspect ratio after borders are applied
+        // Content width = 1.0 - left - right, Content height = 1.0 - top - bottom
+        let contentWidth = 1.0 - config.borderWidth.left - config.borderWidth.right
+        let contentHeight = 1.0 - config.borderWidth.top - config.borderWidth.bottom
+        params.contentAspect = contentWidth / contentHeight
+
         params.enabled = config.enabled ? 1 : 0
         return params
     }

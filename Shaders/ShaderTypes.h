@@ -148,6 +148,8 @@ typedef struct {
     vector_float3 borderColor;
     float edgeFade;
     float cornerDarkening;
+    float inputAspect;      // Input texture aspect ratio (width/height)
+    float contentAspect;    // Content area aspect ratio after borders applied
     int enabled;
 } InstantFrameParams;
 
