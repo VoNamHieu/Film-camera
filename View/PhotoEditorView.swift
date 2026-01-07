@@ -34,7 +34,7 @@ struct PhotoEditorView: View {
     @State private var selectedItem: PhotosPickerItem?
     @State private var originalImage: UIImage?
     @State private var filteredImage: UIImage?
-    @State private var selectedPreset: FilterPreset = FilmPresets.kodakPortra400
+    @State private var selectedPreset: FilterPreset = FilmPresets.warmPortrait400
     @State private var selectedCategory: FilterCategory = .professional
     
     @State private var isProcessing = false

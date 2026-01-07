@@ -372,7 +372,7 @@ struct CompactEffectButton: View {
             .background(Color.black)
             .onAppear {
                 // Load a sample preset for preview
-                effectManager.loadPreset(FilmPresets.kodakPortra400)
+                effectManager.loadPreset(FilmPresets.warmPortrait400)
             }
         }
     }

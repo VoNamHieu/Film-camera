@@ -11,7 +11,7 @@ struct ContentView: View {
     @StateObject private var cameraManager = CameraManager()
     @StateObject private var effectManager = EffectStateManager()
     @ObservedObject private var galleryManager = GalleryManager.shared
-    @State private var selectedPreset: FilterPreset = FilmPresets.kodakPortra400
+    @State private var selectedPreset: FilterPreset = FilmPresets.warmPortrait400
     @State private var selectedCategory: FilterCategory = .professional
     @State private var showPresetPicker = false
     @State private var showSavedAlert = false
