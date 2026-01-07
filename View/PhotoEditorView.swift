@@ -60,53 +60,31 @@ struct PhotoEditorView: View {
     @State private var lastFilterResult: String = ""
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
+        ZStack {
+            Color.black.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // Image Display Area
-                    imageDisplayArea
+            VStack(spacing: 0) {
+                // Custom navigation bar
+                customNavigationBar
 
-                    // Controls
-                    if originalImage != nil {
-                        controlsArea
-                    }
-                }
+                // Image Display Area
+                imageDisplayArea
 
-                // Processing overlay
-                if isProcessing {
-                    processingOverlay
+                // Controls
+                if originalImage != nil {
+                    controlsArea
                 }
             }
-            .navigationTitle("Photo Editor")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        currentFilterTask?.cancel()
-                        dismiss()
-                    }
-                    .foregroundColor(.white)
-                }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if filteredImage != nil {
-                        Button("Save") { savePhoto() }
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                    }
-                }
+            // Processing overlay
+            if isProcessing {
+                processingOverlay
             }
-            .toolbarBackground(.black, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .onChange(of: selectedItem) { _, newItem in
             loadImage(from: newItem)
         }
-        .onChange(of: selectedPreset) { oldPreset, newPreset in
-            print("🔄 PhotoEditor: Preset changed from '\(oldPreset.label)' to '\(newPreset.label)'")
+        .onChange(of: selectedPreset) { _, newPreset in
             applyFilterDebounced(preset: newPreset)
         }
         .alert("Photo Saved", isPresented: $showSavedAlert) {
@@ -123,7 +101,41 @@ struct PhotoEditorView: View {
             currentFilterTask?.cancel()
         }
     }
-    
+
+    // MARK: - Custom Navigation Bar
+
+    private var customNavigationBar: some View {
+        HStack {
+            Button("Cancel") {
+                currentFilterTask?.cancel()
+                dismiss()
+            }
+            .foregroundColor(.white)
+
+            Spacer()
+
+            Text("Photo Editor")
+                .font(.headline)
+                .foregroundColor(.white)
+
+            Spacer()
+
+            if filteredImage != nil {
+                Button("Save") { savePhoto() }
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+            } else {
+                // Placeholder to balance the layout
+                Text("Save")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.clear)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.black)
+    }
+
     // MARK: - Image Display Area
     
     private var imageDisplayArea: some View {
