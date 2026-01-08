@@ -63,44 +63,70 @@ struct PhotoEditorView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Custom navigation bar
-                customNavigationBar
+            VStack(spacing: 20) {
+                // Simple title
+                Text("Photo Editor")
+                    .font(.headline)
+                    .foregroundColor(.white)
 
-                // Image Display Area
-                imageDisplayArea
-
-                // Controls
-                if originalImage != nil {
-                    controlsArea
+                // Cancel button
+                Button("Cancel") {
+                    dismiss()
                 }
-            }
+                .foregroundColor(.white)
+                .padding()
+                .background(Color.gray.opacity(0.3))
+                .cornerRadius(10)
 
-            // Processing overlay
-            if isProcessing {
-                processingOverlay
+                // Simple photo picker
+                PhotosPicker(selection: $selectedItem, matching: .images) {
+                    Text("Select Photo")
+                        .foregroundColor(.black)
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(10)
+                }
+
+                // Show selected image if any
+                if let image = originalImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: 300)
+                }
             }
         }
         .onChange(of: selectedItem) { _, newItem in
             loadImage(from: newItem)
         }
-        .onChange(of: selectedPreset) { _, newPreset in
-            applyFilterDebounced(preset: newPreset)
-        }
-        .alert("Photo Saved", isPresented: $showSavedAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Your edited photo has been saved to the camera roll.")
-        }
-        .alert("Error", isPresented: $showErrorAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage)
-        }
-        .onDisappear {
-            currentFilterTask?.cancel()
+    }
+
+    // MARK: - Minimal Image Loading (for debugging)
+
+    private func loadImage(from item: PhotosPickerItem?) {
+        guard let item = item else { return }
+
+        Task {
+            do {
+                guard let pickedImage = try await item.loadTransferable(type: PickedImage.self) else {
+                    print("❌ Could not load image")
+                    return
+                }
+
+                await MainActor.run {
+                    self.originalImage = pickedImage.image
+                    print("✅ Image loaded: \(Int(pickedImage.image.size.width))x\(Int(pickedImage.image.size.height))")
+                }
+            } catch {
+                print("❌ Error loading image: \(error)")
+            }
         }
     }
+}
+
+// MARK: - Full Implementation (temporarily disabled for debugging)
+/*
+struct PhotoEditorView_Full {
 
     // MARK: - Custom Navigation Bar
 
@@ -568,6 +594,7 @@ struct PhotoEditorView: View {
         }
     }
 }
+*/ // End of PhotoEditorView_Full (disabled for debugging)
 
 // MARK: - Compare Slider View
 
