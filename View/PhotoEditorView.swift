@@ -28,6 +28,12 @@ struct PickedImage: Transferable {
 
 // MARK: - Photo Editor View
 
+// Edit mode enum
+enum PhotoEditMode: String, CaseIterable {
+    case filters = "Filters"
+    case adjust = "Adjust"
+}
+
 struct PhotoEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -55,6 +61,21 @@ struct PhotoEditorView: View {
 
     // Processing state with ID to track which filter is active
     @State private var processingPresetId: String?
+
+    // Edit mode: filters or manual adjustments
+    @State private var editMode: PhotoEditMode = .filters
+
+    // Manual adjustments
+    @State private var adjustExposure: Float = 0
+    @State private var adjustContrast: Float = 0
+    @State private var adjustHighlights: Float = 0
+    @State private var adjustShadows: Float = 0
+    @State private var adjustSaturation: Float = 0
+    @State private var adjustVibrance: Float = 0
+    @State private var adjustTemperature: Float = 0
+    @State private var adjustTint: Float = 0
+    @State private var adjustFade: Float = 0
+    @State private var adjustClarity: Float = 0
 
     var body: some View {
         ZStack {
@@ -190,6 +211,7 @@ struct PhotoEditorView: View {
 
     private var controlsArea: some View {
         VStack(spacing: 12) {
+            // Top bar with change photo, mode picker, and compare
             HStack {
                 PhotosPicker(selection: $selectedItem, matching: .images) {
                     HStack(spacing: 6) {
@@ -206,17 +228,14 @@ struct PhotoEditorView: View {
 
                 Spacer()
 
-                HStack(spacing: 6) {
-                    if processingPresetId == selectedPreset.id {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.7)
+                // Mode picker (Filters / Adjust)
+                Picker("Mode", selection: $editMode) {
+                    ForEach(PhotoEditMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
                     }
-                    Text(selectedPreset.label)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
                 }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
 
                 Spacer()
 
@@ -236,9 +255,15 @@ struct PhotoEditorView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
 
-            categoryScrollView
-            presetScrollView
-                .padding(.bottom, 20)
+            // Show filters or adjustments based on mode
+            if editMode == .filters {
+                categoryScrollView
+                presetScrollView
+                    .padding(.bottom, 20)
+            } else {
+                adjustmentsScrollView
+                    .padding(.bottom, 20)
+            }
         }
         .background(
             LinearGradient(
@@ -247,6 +272,136 @@ struct PhotoEditorView: View {
                 endPoint: .bottom
             )
         )
+    }
+
+    // MARK: - Adjustments Scroll View
+
+    private var adjustmentsScrollView: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 16) {
+                // Light adjustments
+                AdjustmentSlider(
+                    icon: "sun.max",
+                    title: "Exposure",
+                    value: $adjustExposure,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                AdjustmentSlider(
+                    icon: "circle.lefthalf.filled",
+                    title: "Contrast",
+                    value: $adjustContrast,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                AdjustmentSlider(
+                    icon: "sun.max.fill",
+                    title: "Highlights",
+                    value: $adjustHighlights,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                AdjustmentSlider(
+                    icon: "moon.fill",
+                    title: "Shadows",
+                    value: $adjustShadows,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                Divider().background(Color.white.opacity(0.3))
+
+                // Color adjustments
+                AdjustmentSlider(
+                    icon: "drop.fill",
+                    title: "Saturation",
+                    value: $adjustSaturation,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                AdjustmentSlider(
+                    icon: "sparkles",
+                    title: "Vibrance",
+                    value: $adjustVibrance,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                AdjustmentSlider(
+                    icon: "thermometer",
+                    title: "Temperature",
+                    value: $adjustTemperature,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                AdjustmentSlider(
+                    icon: "paintpalette",
+                    title: "Tint",
+                    value: $adjustTint,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                Divider().background(Color.white.opacity(0.3))
+
+                // Effects
+                AdjustmentSlider(
+                    icon: "aqi.medium",
+                    title: "Fade",
+                    value: $adjustFade,
+                    range: 0...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                AdjustmentSlider(
+                    icon: "scope",
+                    title: "Clarity",
+                    value: $adjustClarity,
+                    range: -1...1,
+                    onChanged: { applyAdjustments() }
+                )
+
+                // Reset button
+                Button(action: resetAdjustments) {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Reset All")
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.2))
+                    .cornerRadius(20)
+                }
+                .padding(.top, 8)
+            }
+            .padding(.horizontal, 16)
+        }
+        .frame(height: 200)
+    }
+
+    private func resetAdjustments() {
+        adjustExposure = 0
+        adjustContrast = 0
+        adjustHighlights = 0
+        adjustShadows = 0
+        adjustSaturation = 0
+        adjustVibrance = 0
+        adjustTemperature = 0
+        adjustTint = 0
+        adjustFade = 0
+        adjustClarity = 0
+        applyAdjustments()
+    }
+
+    private func applyAdjustments() {
+        applyFilterWithAdjustments()
     }
 
     // MARK: - Category Scroll
@@ -366,6 +521,9 @@ struct PhotoEditorView: View {
 
         processingPresetId = preset.id
 
+        // Create modified preset with manual adjustments
+        let modifiedPreset = createModifiedPreset(base: preset)
+
         currentFilterTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 100_000_000)
 
@@ -379,7 +537,7 @@ struct PhotoEditorView: View {
                     }
 
                     if RenderEngine.isAvailable {
-                        let result = RenderEngine.shared.applyFilterPreview(to: original, preset: preset)
+                        let result = RenderEngine.shared.applyFilterPreview(to: original, preset: modifiedPreset)
                         continuation.resume(returning: result)
                     } else {
                         continuation.resume(returning: nil)
@@ -401,12 +559,70 @@ struct PhotoEditorView: View {
         }
     }
 
+    private func applyFilterWithAdjustments() {
+        applyFilterDebounced(preset: selectedPreset)
+    }
+
+    /// Create a modified preset that combines the base preset with manual adjustments
+    private func createModifiedPreset(base: FilterPreset) -> FilterPreset {
+        // Combine base preset adjustments with manual adjustments
+        let combinedAdjustments = ColorAdjustments(
+            exposure: base.colorAdjustments.exposure + adjustExposure,
+            contrast: base.colorAdjustments.contrast + adjustContrast,
+            highlights: base.colorAdjustments.highlights + adjustHighlights,
+            shadows: base.colorAdjustments.shadows + adjustShadows,
+            whites: base.colorAdjustments.whites,
+            blacks: base.colorAdjustments.blacks,
+            saturation: base.colorAdjustments.saturation + adjustSaturation,
+            vibrance: base.colorAdjustments.vibrance + adjustVibrance,
+            temperature: base.colorAdjustments.temperature + adjustTemperature,
+            tint: base.colorAdjustments.tint + adjustTint,
+            fade: base.colorAdjustments.fade + adjustFade,
+            clarity: base.colorAdjustments.clarity + adjustClarity
+        )
+
+        return FilterPreset(
+            id: base.id,
+            label: base.label,
+            category: base.category,
+            lutId: base.lutId,
+            lutFile: base.lutFile,
+            lutIntensity: base.lutIntensity,
+            colorSpace: base.colorSpace,
+            colorAdjustments: combinedAdjustments,
+            splitTone: base.splitTone,
+            selectiveColor: base.selectiveColor,
+            lensDistortion: base.lensDistortion,
+            rgbCurves: base.rgbCurves,
+            grain: base.grain,
+            bloom: base.bloom,
+            vignette: base.vignette,
+            halation: base.halation,
+            instantFrame: base.instantFrame,
+            flash: base.flash,
+            lightLeak: base.lightLeak,
+            dateStamp: base.dateStamp,
+            ccdBloom: base.ccdBloom,
+            bw: base.bw,
+            overlays: base.overlays,
+            vhsEffects: base.vhsEffects,
+            digicamEffects: base.digicamEffects,
+            filmStripEffects: base.filmStripEffects,
+            skinToneProtection: base.skinToneProtection,
+            toneMapping: base.toneMapping,
+            filmStock: base.filmStock
+        )
+    }
+
     // MARK: - Save Photo
 
     private func savePhoto() {
         guard let fullRes = fullResImage ?? originalImage else { return }
 
         isProcessing = true
+
+        // Create modified preset with manual adjustments for saving
+        let modifiedPreset = createModifiedPreset(base: selectedPreset)
 
         Task {
             let imageToSave: UIImage = await withCheckedContinuation { continuation in
@@ -415,7 +631,7 @@ struct PhotoEditorView: View {
                         continuation.resume(returning: fullRes)
                         return
                     }
-                    if let filtered = RenderEngine.shared.applyFilter(to: fullRes, preset: selectedPreset) {
+                    if let filtered = RenderEngine.shared.applyFilter(to: fullRes, preset: modifiedPreset) {
                         continuation.resume(returning: filtered)
                     } else {
                         continuation.resume(returning: fullRes)
@@ -581,6 +797,109 @@ extension UIImage {
         return renderer.image { _ in
             self.draw(in: CGRect(origin: .zero, size: newSize))
         }
+    }
+}
+
+// MARK: - Adjustment Slider Component
+
+struct AdjustmentSlider: View {
+    let icon: String
+    let title: String
+    @Binding var value: Float
+    let range: ClosedRange<Float>
+    let onChanged: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 24)
+
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                Text(formatValue(value))
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 45, alignment: .trailing)
+            }
+
+            HStack(spacing: 12) {
+                // Min indicator
+                Image(systemName: minIcon)
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.5))
+
+                // Slider
+                Slider(value: $value, in: range)
+                    .tint(sliderTint)
+                    .onChange(of: value) { _, _ in
+                        onChanged()
+                    }
+
+                // Max indicator
+                Image(systemName: maxIcon)
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.5))
+
+                // Reset button (only show when value != 0)
+                if abs(value) > 0.01 {
+                    Button(action: {
+                        value = range.lowerBound >= 0 ? range.lowerBound : 0
+                        onChanged()
+                    }) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                } else {
+                    Color.clear.frame(width: 20)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var minIcon: String {
+        switch icon {
+        case "sun.max", "sun.max.fill": return "sun.min"
+        case "circle.lefthalf.filled": return "circle"
+        case "drop.fill": return "drop"
+        case "thermometer": return "thermometer.snowflake"
+        default: return "minus"
+        }
+    }
+
+    private var maxIcon: String {
+        switch icon {
+        case "sun.max", "sun.max.fill": return "sun.max.fill"
+        case "circle.lefthalf.filled": return "circle.fill"
+        case "drop.fill": return "drop.fill"
+        case "thermometer": return "thermometer.sun"
+        default: return "plus"
+        }
+    }
+
+    private var sliderTint: Color {
+        if value > 0 {
+            return .blue
+        } else if value < 0 {
+            return .orange
+        }
+        return .white.opacity(0.5)
+    }
+
+    private func formatValue(_ value: Float) -> String {
+        if abs(value) < 0.01 {
+            return "0"
+        }
+        let sign = value > 0 ? "+" : ""
+        return "\(sign)\(Int(value * 100))"
     }
 }
 
