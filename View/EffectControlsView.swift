@@ -32,6 +32,7 @@ struct EffectControlsView: View {
                             isExpanded: expandedEffect == effect,
                             onToggle: { effectManager.toggleEffect(effect) },
                             onIntensityChange: { effectManager.setEffectIntensity(effect, intensity: $0) },
+                            onSliderChange: { effectManager.setSliderValue(effect, value: $0) },
                             onTap: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     expandedEffect = expandedEffect == effect ? nil : effect
@@ -119,6 +120,7 @@ struct EffectControlRow: View {
     let isExpanded: Bool
     let onToggle: () -> Void
     let onIntensityChange: (Float) -> Void
+    let onSliderChange: (Float) -> Void
     let onTap: () -> Void
 
     private var isEnabled: Bool { value.isEnabled }
@@ -149,7 +151,7 @@ struct EffectControlRow: View {
                 valueDisplay
 
                 // Toggle/Expand
-                if effect.hasIntensity {
+                if effect.isExpandable {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption)
                         .foregroundColor(.gray)
@@ -159,7 +161,7 @@ struct EffectControlRow: View {
             .onTapGesture(perform: onTap)
 
             // Expanded controls
-            if isExpanded && effect.hasIntensity {
+            if isExpanded && effect.isExpandable {
                 expandedControls
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -208,24 +210,24 @@ struct EffectControlRow: View {
             Divider()
                 .background(Color.gray.opacity(0.3))
 
-            // Enable toggle
-            HStack {
-                Text("Enabled")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { isEnabled },
-                    set: { _ in onToggle() }
-                ))
-                .labelsHidden()
-                .tint(.blue)
-            }
-
-            // Intensity slider
+            // For compound effects (grain, bloom, etc.) - show enable toggle + intensity
             if case .compound(let values) = value {
-                let intensity = values["intensity"] ?? 0
+                // Enable toggle
+                HStack {
+                    Text("Enabled")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { isEnabled },
+                        set: { _ in onToggle() }
+                    ))
+                    .labelsHidden()
+                    .tint(.blue)
+                }
 
+                // Intensity slider
+                let intensity = values["intensity"] ?? 0
                 HStack {
                     Text("Intensity")
                         .font(.caption)
@@ -244,8 +246,107 @@ struct EffectControlRow: View {
                         .frame(width: 40, alignment: .trailing)
                 }
             }
+
+            // For slider effects (exposure, contrast, etc.) - show bidirectional slider
+            if case .slider(let val, let minVal, let maxVal) = value {
+                HStack {
+                    // Label with icon for negative/positive
+                    Image(systemName: sliderMinIcon)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .frame(width: 20)
+
+                    Slider(
+                        value: Binding(
+                            get: { val },
+                            set: { onSliderChange($0) }
+                        ),
+                        in: minVal...maxVal
+                    )
+                    .tint(val >= 0 ? .blue : .orange)
+
+                    Image(systemName: sliderMaxIcon)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .frame(width: 20)
+
+                    // Value display
+                    Text(formatSliderValue(val))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(val == 0 ? .gray : (val > 0 ? .blue : .orange))
+                        .frame(width: 45, alignment: .trailing)
+                }
+
+                // Reset button
+                if val != 0 {
+                    Button {
+                        onSliderChange(0)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                            Text("Reset")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
         }
         .padding(.top, 8)
+    }
+
+    // MARK: - Slider Helpers
+
+    private var sliderMinIcon: String {
+        switch effect {
+        case .exposure: return "sun.min"
+        case .contrast: return "circle"
+        case .saturation: return "drop"
+        case .vibrance: return "sparkle"
+        case .temperature: return "thermometer.snowflake"
+        case .highlights: return "sun.min"
+        case .shadows: return "moon"
+        case .whites: return "circle"
+        case .blacks: return "circle.fill"
+        case .fade: return "aqi.low"
+        case .clarity: return "square.dashed"
+        case .tint: return "leaf"
+        default: return "minus"
+        }
+    }
+
+    private var sliderMaxIcon: String {
+        switch effect {
+        case .exposure: return "sun.max.fill"
+        case .contrast: return "circle.lefthalf.filled"
+        case .saturation: return "drop.fill"
+        case .vibrance: return "sparkles"
+        case .temperature: return "thermometer.sun.fill"
+        case .highlights: return "sun.max.fill"
+        case .shadows: return "moon.fill"
+        case .whites: return "circle.fill"
+        case .blacks: return "circle"
+        case .fade: return "aqi.high"
+        case .clarity: return "square.fill"
+        case .tint: return "leaf.fill"
+        default: return "plus"
+        }
+    }
+
+    private func formatSliderValue(_ value: Float) -> String {
+        let intValue = Int(value * 100)
+        if intValue > 0 {
+            return "+\(intValue)"
+        } else if intValue < 0 {
+            return "\(intValue)"
+        } else {
+            return "0"
+        }
     }
 
     // MARK: - Performance Color
@@ -372,7 +473,7 @@ struct CompactEffectButton: View {
             .background(Color.black)
             .onAppear {
                 // Load a sample preset for preview
-                effectManager.loadPreset(FilmPresets.kodakPortra400)
+                effectManager.loadPreset(FilmPresets.warmPortrait400)
             }
         }
     }

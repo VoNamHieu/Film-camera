@@ -11,7 +11,7 @@ struct ContentView: View {
     @StateObject private var cameraManager = CameraManager()
     @StateObject private var effectManager = EffectStateManager()
     @ObservedObject private var galleryManager = GalleryManager.shared
-    @State private var selectedPreset: FilterPreset = FilmPresets.kodakPortra400
+    @State private var selectedPreset: FilterPreset = FilmPresets.warmPortrait400
     @State private var selectedCategory: FilterCategory = .professional
     @State private var showPresetPicker = false
     @State private var showSavedAlert = false
@@ -446,8 +446,20 @@ struct ContentView: View {
     
     private var captureControlsBar: some View {
         HStack(spacing: 50) {
-            // Gallery button - opens local gallery
-            Button(action: { showGallery = true }) {
+            // Gallery button - with context menu for Gallery and Import
+            Menu {
+                Button {
+                    showGallery = true
+                } label: {
+                    Label("View Gallery", systemImage: "photo.on.rectangle")
+                }
+
+                Button {
+                    showPhotoEditor = true
+                } label: {
+                    Label("Import & Edit Photo", systemImage: "square.and.arrow.down")
+                }
+            } label: {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(.white.opacity(0.15))
@@ -826,7 +838,7 @@ struct PresetThumbnailButton: View {
             case .food: return [.brown, .orange.opacity(0.7)]
             case .night: return [.purple, .blue]
             case .creative: return [.pink, .purple]
-            case .vhs: return [.red, .orange.opacity(0.6)]
+            case .vhs: return [.red, .orange.opacity(0.8)]
             case .digicam: return [.cyan, .blue.opacity(0.7)]
             }
         }()

@@ -771,21 +771,39 @@ fragment float4 instantFrameFragment(
     float bottom = 1.0 - p.borderWidths.w;
 
     if (uv.x > left && uv.x < right && uv.y > top && uv.y < bottom) {
-        float2 photoUV = float2(
+        // Map screen UV to content area UV (0-1 within the content area)
+        float2 contentUV = float2(
             (uv.x - left) / (right - left),
             (uv.y - top) / (bottom - top)
         );
+
+        // ★ FIX: Apply aspect-fill scaling to prevent stretching
+        // This crops the input image to fill the content area while maintaining aspect ratio
+        float2 photoUV = contentUV;
+
+        if (p.inputAspect > 0.0 && p.contentAspect > 0.0) {
+            if (p.inputAspect > p.contentAspect) {
+                // Input is wider than content area: crop left/right
+                float scale = p.inputAspect / p.contentAspect;
+                photoUV.x = (contentUV.x - 0.5) / scale + 0.5;
+            } else if (p.inputAspect < p.contentAspect) {
+                // Input is taller than content area: crop top/bottom
+                float scale = p.contentAspect / p.inputAspect;
+                photoUV.y = (contentUV.y - 0.5) / scale + 0.5;
+            }
+        }
+
         float4 color = photoTexture.sample(s, photoUV);
 
         // Edge fade
-        float dX = min(photoUV.x, 1.0 - photoUV.x);
-        float dY = min(photoUV.y, 1.0 - photoUV.y);
+        float dX = min(contentUV.x, 1.0 - contentUV.x);
+        float dY = min(contentUV.y, 1.0 - contentUV.y);
         float edgeDist = min(dX, dY);
         float fade = smoothstep(0.0, p.edgeFade, edgeDist);
         color.rgb *= mix(0.8, 1.0, fade);
 
         // Corner darkening
-        float distCenter = length(photoUV - 0.5);
+        float distCenter = length(contentUV - 0.5);
         color.rgb *= (1.0 - smoothstep(0.4, 0.8, distCenter) * p.cornerDarkening);
 
         return color;

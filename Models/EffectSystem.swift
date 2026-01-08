@@ -371,7 +371,7 @@ enum EffectType: String, CaseIterable, Codable {
         }
     }
 
-    /// Whether this effect supports intensity adjustment
+    /// Whether this effect supports intensity adjustment (compound effects)
     var hasIntensity: Bool {
         switch self {
         case .grain, .bloom, .vignette, .halation, .flash, .lightLeak, .ccdBloom, .overlays:
@@ -379,6 +379,23 @@ enum EffectType: String, CaseIterable, Codable {
         default:
             return false
         }
+    }
+
+    /// Whether this effect has a slider control (color/lighting adjustments)
+    var hasSlider: Bool {
+        switch self {
+        case .exposure, .contrast, .saturation, .vibrance,
+             .temperature, .tint, .highlights, .shadows,
+             .whites, .blacks, .fade, .clarity:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this effect can be expanded to show controls
+    var isExpandable: Bool {
+        return hasIntensity || hasSlider
     }
 
     /// Group this effect belongs to (for UI organization)
@@ -443,7 +460,7 @@ enum CameraCategory: String, CaseIterable, Codable {
         case .food: return "Food & Lifestyle"
         case .night: return "Night & Neon"
         case .creative: return "Creative"
-        case .vhs: return "VHS & Camcorder"
+        case .vhs: return "VHS / Camcorder"
         case .digicam: return "Digital Camera"
         }
     }
@@ -834,7 +851,7 @@ final class EffectStateManager: ObservableObject {
 
     /// Set intensity for a compound effect
     func setEffectIntensity(_ effect: EffectType, intensity: Float) {
-        var current = effectiveValue(for: effect)
+        let current = effectiveValue(for: effect)
 
         switch current {
         case .slider(_, let min, let max):
@@ -847,6 +864,21 @@ final class EffectStateManager: ObservableObject {
             effectOverrides[effect] = .compound(values: values)
         default:
             break
+        }
+
+        updatePerformanceLevel()
+    }
+
+    /// Set value for a slider effect (exposure, contrast, etc.)
+    func setSliderValue(_ effect: EffectType, value: Float) {
+        let current = effectiveValue(for: effect)
+
+        switch current {
+        case .slider(_, let min, let max):
+            effectOverrides[effect] = .slider(value: value, min: min, max: max)
+        default:
+            // For effects that don't have slider type, try to create one
+            effectOverrides[effect] = .slider(value: value, min: -1.0, max: 1.0)
         }
 
         updatePerformanceLevel()
@@ -1187,16 +1219,17 @@ extension CameraCategory {
 
         case .vhs:
             return [
-                .grain: .compound(values: ["enabled": 1.0, "intensity": 0.15, "size": 1.1, "softness": 0.5]),
-                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.08, "threshold": 0.70, "radius": 15]),
-                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.18, "roundness": 0.70, "feather": 0.60])
+                .grain: .compound(values: ["enabled": 1.0, "intensity": 0.25, "size": 1.3, "softness": 0.4]),
+                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.12, "threshold": 0.65, "radius": 18]),
+                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.20, "roundness": 0.7, "feather": 0.5])
             ]
 
         case .digicam:
             return [
-                .grain: .compound(values: ["enabled": 0.0, "intensity": 0.0, "size": 1.0, "softness": 0.5]),
-                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.10, "threshold": 0.68, "radius": 14]),
-                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.12, "roundness": 0.85, "feather": 0.70])
+                .grain: .compound(values: ["enabled": 1.0, "intensity": 0.10, "size": 0.8, "softness": 0.6]),
+                .bloom: .compound(values: ["enabled": 1.0, "intensity": 0.08, "threshold": 0.72, "radius": 10]),
+                .vignette: .compound(values: ["enabled": 1.0, "intensity": 0.08, "roundness": 0.85, "feather": 0.65]),
+                .ccdBloom: .compound(values: ["enabled": 1.0, "intensity": 0.3, "threshold": 0.7, "verticalSmear": 0.2, "purpleFringing": 0.15])
             ]
         }
     }

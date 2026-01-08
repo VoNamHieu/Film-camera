@@ -710,10 +710,15 @@ class FilterRenderer {
         }
 
         // PASS 5-8: Bloom (Separable - 4 passes) - FULL QUALITY
+        // ★ FIX: Fallback to legacy bloom if separable pipeline unavailable
         if preset.bloom.enabled {
             if let result = applyBloomSeparable(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
                 currentInput = result
                 passResults.append("Bloom✓")
+            } else if let result = applyBloomSimplified(input: currentInput, config: preset.bloom, commandBuffer: commandBuffer) {
+                // Fallback to legacy single-pass bloom
+                currentInput = result
+                passResults.append("Bloom(legacy)✓")
             } else {
                 passResults.append("Bloom✗")
             }
@@ -730,10 +735,15 @@ class FilterRenderer {
         }
 
         // PASS 9-12: Halation (Separable - 4 passes) - FULL QUALITY
+        // ★ FIX: Fallback to legacy halation if separable pipeline unavailable
         if preset.halation.enabled {
             if let result = applyHalationSeparable(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
                 currentInput = result
                 passResults.append("Halation✓")
+            } else if let result = applyHalationSimplified(input: currentInput, config: preset.halation, commandBuffer: commandBuffer) {
+                // Fallback to legacy single-pass halation
+                currentInput = result
+                passResults.append("Halation(legacy)✓")
             } else {
                 passResults.append("Halation✗")
             }
@@ -917,8 +927,20 @@ class FilterRenderer {
     // MARK: - Separable Bloom Pipeline (4 passes) - CAPTURE ONLY
     
     private func applyBloomSeparable(input: MTLTexture, config: BloomConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        // ★ FIX: Validate ALL separable bloom pipelines exist before proceeding
+        // If any pipeline is missing, return nil to trigger fallback to legacy bloom
+        guard let thresholdPipeline = RenderEngine.shared.bloomThresholdPipeline,
+              let horizontalPipeline = RenderEngine.shared.bloomHorizontalPipeline,
+              let verticalPipeline = RenderEngine.shared.bloomVerticalPipeline,
+              let compositePipeline = RenderEngine.shared.bloomCompositePipeline else {
+            #if DEBUG
+            print("⚠️ FilterRenderer: Separable bloom pipelines not available, will fallback to legacy")
+            #endif
+            return nil
+        }
+
         let texturePool = RenderEngine.shared.texturePool
-        
+
         guard let thresholdTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let horizontalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let verticalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
@@ -927,53 +949,41 @@ class FilterRenderer {
         var params = prepareBloomParams(config)
 
         // Pass 1: Threshold extraction
-        if let pipeline = RenderEngine.shared.bloomThresholdPipeline {
-            renderPassDescriptor.colorAttachments[0].texture = thresholdTex
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(input, index: 0)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = thresholdTex
+        guard let encoder1 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder1.setRenderPipelineState(thresholdPipeline)
+        encoder1.setFragmentTexture(input, index: 0)
+        encoder1.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+        encoder1.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder1.endEncoding()
 
         // Pass 2: Horizontal blur
-        if let pipeline = RenderEngine.shared.bloomHorizontalPipeline {
-            renderPassDescriptor.colorAttachments[0].texture = horizontalTex
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(thresholdTex, index: 0)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = horizontalTex
+        guard let encoder2 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder2.setRenderPipelineState(horizontalPipeline)
+        encoder2.setFragmentTexture(thresholdTex, index: 0)
+        encoder2.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+        encoder2.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder2.endEncoding()
 
         // Pass 3: Vertical blur
-        if let pipeline = RenderEngine.shared.bloomVerticalPipeline {
-            renderPassDescriptor.colorAttachments[0].texture = verticalTex
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(horizontalTex, index: 0)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = verticalTex
+        guard let encoder3 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder3.setRenderPipelineState(verticalPipeline)
+        encoder3.setFragmentTexture(horizontalTex, index: 0)
+        encoder3.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+        encoder3.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder3.endEncoding()
 
         // Pass 4: Composite
-        if let pipeline = RenderEngine.shared.bloomCompositePipeline {
-            renderPassDescriptor.colorAttachments[0].texture = output
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(input, index: 0)
-                encoder.setFragmentTexture(verticalTex, index: 1)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let encoder4 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder4.setRenderPipelineState(compositePipeline)
+        encoder4.setFragmentTexture(input, index: 0)
+        encoder4.setFragmentTexture(verticalTex, index: 1)
+        encoder4.setFragmentBytes(&params, length: MemoryLayout<BloomParams>.stride, index: 0)
+        encoder4.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder4.endEncoding()
 
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
             texturePool?.recycle(thresholdTex)
@@ -987,8 +997,20 @@ class FilterRenderer {
     // MARK: - Separable Halation Pipeline (4 passes) - CAPTURE ONLY
     
     private func applyHalationSeparable(input: MTLTexture, config: HalationConfig, commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        // ★ FIX: Validate ALL separable halation pipelines exist before proceeding
+        // If any pipeline is missing, return nil to trigger fallback to legacy halation
+        guard let thresholdPipeline = RenderEngine.shared.halationThresholdPipeline,
+              let horizontalPipeline = RenderEngine.shared.halationHorizontalPipeline,
+              let verticalPipeline = RenderEngine.shared.halationVerticalPipeline,
+              let compositePipeline = RenderEngine.shared.halationCompositePipeline else {
+            #if DEBUG
+            print("⚠️ FilterRenderer: Separable halation pipelines not available, will fallback to legacy")
+            #endif
+            return nil
+        }
+
         let texturePool = RenderEngine.shared.texturePool
-        
+
         guard let thresholdTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let horizontalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
               let verticalTex = texturePool.renderTargetTexture(width: input.width, height: input.height, pixelFormat: .bgra8Unorm),
@@ -997,53 +1019,41 @@ class FilterRenderer {
         var params = prepareHalationParams(config)
 
         // Pass 1: Threshold + red tint
-        if let pipeline = RenderEngine.shared.halationThresholdPipeline {
-            renderPassDescriptor.colorAttachments[0].texture = thresholdTex
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(input, index: 0)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = thresholdTex
+        guard let encoder1 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder1.setRenderPipelineState(thresholdPipeline)
+        encoder1.setFragmentTexture(input, index: 0)
+        encoder1.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+        encoder1.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder1.endEncoding()
 
         // Pass 2: Horizontal blur
-        if let pipeline = RenderEngine.shared.halationHorizontalPipeline {
-            renderPassDescriptor.colorAttachments[0].texture = horizontalTex
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(thresholdTex, index: 0)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = horizontalTex
+        guard let encoder2 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder2.setRenderPipelineState(horizontalPipeline)
+        encoder2.setFragmentTexture(thresholdTex, index: 0)
+        encoder2.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+        encoder2.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder2.endEncoding()
 
         // Pass 3: Vertical blur
-        if let pipeline = RenderEngine.shared.halationVerticalPipeline {
-            renderPassDescriptor.colorAttachments[0].texture = verticalTex
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(horizontalTex, index: 0)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = verticalTex
+        guard let encoder3 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder3.setRenderPipelineState(verticalPipeline)
+        encoder3.setFragmentTexture(horizontalTex, index: 0)
+        encoder3.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+        encoder3.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder3.endEncoding()
 
         // Pass 4: Composite
-        if let pipeline = RenderEngine.shared.halationCompositePipeline {
-            renderPassDescriptor.colorAttachments[0].texture = output
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                encoder.setRenderPipelineState(pipeline)
-                encoder.setFragmentTexture(input, index: 0)
-                encoder.setFragmentTexture(verticalTex, index: 1)
-                encoder.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-                encoder.endEncoding()
-            }
-        }
+        renderPassDescriptor.colorAttachments[0].texture = output
+        guard let encoder4 = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else { return nil }
+        encoder4.setRenderPipelineState(compositePipeline)
+        encoder4.setFragmentTexture(input, index: 0)
+        encoder4.setFragmentTexture(verticalTex, index: 1)
+        encoder4.setFragmentBytes(&params, length: MemoryLayout<HalationParams>.stride, index: 0)
+        encoder4.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder4.endEncoding()
 
         commandBuffer.addCompletedHandler { [weak texturePool] _ in
             texturePool?.recycle(thresholdTex)
@@ -1090,7 +1100,7 @@ class FilterRenderer {
         renderEncoder.setRenderPipelineState(pipeline)
         renderEncoder.setFragmentTexture(input, index: 0)
 
-        var params = prepareInstantFrameParams(config)
+        var params = prepareInstantFrameParams(config, inputTexture: input)
         renderEncoder.setFragmentBytes(&params, length: MemoryLayout<InstantFrameParams>.stride, index: 0)
 
         renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
@@ -1265,12 +1275,23 @@ class FilterRenderer {
         return params
     }
 
-    private func prepareInstantFrameParams(_ config: InstantFrameConfig) -> InstantFrameParams {
+    private func prepareInstantFrameParams(_ config: InstantFrameConfig, inputTexture: MTLTexture) -> InstantFrameParams {
         var params = InstantFrameParams()
         params.borderWidths = SIMD4<Float>(config.borderWidth.top, config.borderWidth.left, config.borderWidth.right, config.borderWidth.bottom)
         params.borderColor = SIMD3<Float>(config.borderColor.r, config.borderColor.g, config.borderColor.b)
         params.edgeFade = 0.05
         params.cornerDarkening = 0.08
+
+        // ★ FIX: Calculate aspect ratios to prevent stretching
+        // Input aspect ratio (width / height)
+        params.inputAspect = Float(inputTexture.width) / Float(inputTexture.height)
+
+        // Content area aspect ratio after borders are applied
+        // Content width = 1.0 - left - right, Content height = 1.0 - top - bottom
+        let contentWidth = 1.0 - config.borderWidth.left - config.borderWidth.right
+        let contentHeight = 1.0 - config.borderWidth.top - config.borderWidth.bottom
+        params.contentAspect = contentWidth / contentHeight
+
         params.enabled = config.enabled ? 1 : 0
         return params
     }
